@@ -44,7 +44,7 @@ async function renderWall() {
 let stream = null, photoBlob = null, audioBlob = null;
 const video = $('#video'), preview = $('#photoPreview');
 
-function stopCam() { stream?.getTracks().forEach(t => t.stop()); stream = null; video.hidden = true; $('#btnSnap').hidden = true; }
+function stopCam() { stream?.getTracks().forEach(t => t.stop()); stream = null; video.srcObject = null; video.hidden = true; $('#btnSnap').hidden = true; }
 
 $('#btnCam').addEventListener('click', async () => {
   try {
@@ -65,20 +65,30 @@ $('#btnSnap').addEventListener('click', () => {
 });
 
 $('#fileIn').addEventListener('change', async e => {
-  const f = e.target.files[0]; if (!f) return;
-  const img = await createImageBitmap(f);
-  const size = Math.min(img.width, img.height);
-  const c = document.createElement('canvas'); c.width = c.height = 800;
-  c.getContext('2d').drawImage(img, (img.width - size) / 2, (img.height - size) / 2, size, size, 0, 0, 800, 800);
-  c.toBlob(b => setPhoto(b), 'image/jpeg', 0.85);
-  stopCam(); e.target.value = '';
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  stopCam();
+  try {
+    const img = await createImageBitmap(f, { imageOrientation: 'from-image' }).catch(() => createImageBitmap(f));
+    const size = Math.min(img.width, img.height);
+    const c = document.createElement('canvas'); c.width = c.height = 800;
+    c.getContext('2d').drawImage(img, (img.width - size) / 2, (img.height - size) / 2, size, size, 0, 0, 800, 800);
+    img.close?.();
+    c.toBlob(b => setPhoto(b), 'image/jpeg', 0.85);
+  } catch { toast('Nu pot deschide poza asta. Încearcă alta.'); }
 });
 
 function setPhoto(blob) {
+  if (!blob) { toast('Poza nu a ieșit. Mai încearcă o dată.'); clearPhoto(); return; }
+  revoke([preview.src]);
   photoBlob = blob; preview.src = URL.createObjectURL(blob); preview.hidden = false; $('#photoPh').hidden = true;
-  $('#btnRetake').hidden = false; $('#btnCam').hidden = true;
+  $('#btnRetake').hidden = false; $('#btnCam').hidden = true; $('#btnSnap').hidden = true;
 }
-$('#btnRetake').addEventListener('click', () => { photoBlob = null; preview.hidden = true; $('#photoPh').hidden = false; $('#btnRetake').hidden = true; $('#btnCam').hidden = false; });
+function clearPhoto() {
+  revoke([preview.src]);
+  photoBlob = null; preview.removeAttribute('src'); preview.hidden = true; $('#photoPh').hidden = false;
+  $('#btnRetake').hidden = true; $('#btnSnap').hidden = true; $('#btnCam').hidden = false;
+}
+$('#btnRetake').addEventListener('click', clearPhoto);
 
 /* ---------- add self: voice ---------- */
 let rec = null, chunks = [], recTimer = null, analyser = null, raf = null, audioCtx = null;
@@ -124,8 +134,8 @@ function stopRec() {
 
 /* ---------- add self: save ---------- */
 function openAdd() {
-  photoBlob = audioBlob = null;
-  $('#formAdd').reset(); preview.hidden = true; $('#photoPh').hidden = false; $('#btnRetake').hidden = true; $('#btnCam').hidden = false;
+  audioBlob = null;
+  $('#formAdd').reset(); stopCam(); clearPhoto();
   $('#audioPreview').hidden = true; $('#timer').textContent = fmt(0); $('#btnRec').textContent = 'Înregistrează'; $('#addErr').hidden = true;
   $('#dlgAdd').showModal();
 }
