@@ -8,12 +8,16 @@ function tilt(seed) { let h = 0; for (const c of seed) h = (h * 31 + c.charCodeA
 function initials(name) { return name.trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase(); }
 function esc(s) { return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 function fmt(sec) { return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`; }
+function revoke(urls) { for (const u of urls) if (u && u.startsWith('blob:')) URL.revokeObjectURL(u); }
 document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', () => b.closest('dialog').close()));
 
 /* ---------- wall ---------- */
 async function renderWall() {
-  try { students = await store.listStudents(); }
+  let rows;
+  try { rows = await store.listStudents(); }
   catch (e) { $('#empty').hidden = false; $('#empty').textContent = 'Nu pot încărca albumul: ' + e.message; return; }
+  revoke(students.flatMap(s => [s.photoUrl, s.audioUrl]));
+  students = rows;
   const wall = $('#wall');
   wall.innerHTML = '';
   for (const s of students) {
@@ -179,6 +183,147 @@ $('#formNote').addEventListener('submit', async e => {
   } catch (err) { $('#noteErr').textContent = 'Nu s-a putut trimite: ' + err.message; $('#noteErr').hidden = false; }
 });
 
+/* ---------- gallery: save photos ---------- */
+const MAX_SIDE = 1600, THUMB_SIDE = 480;
+let photos = [], pending = [], lightIdx = 0;
+
+// One decode, two JPEGs: a full-size one to keep and a small one for the grid.
+async function shrink(bmp, maxSide, quality) {
+  const scale = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(bmp.width * scale));
+  c.height = Math.max(1, Math.round(bmp.height * scale));
+  c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+  return new Promise(r => c.toBlob(r, 'image/jpeg', quality));
+}
+async function prepare(file) {
+  let bmp;
+  try { bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }); }
+  catch { bmp = await createImageBitmap(file); }
+  const photo = await shrink(bmp, MAX_SIDE, 0.82);
+  const thumb = await shrink(bmp, THUMB_SIDE, 0.7);
+  bmp.close?.();
+  return { photo, thumb, url: URL.createObjectURL(thumb) };
+}
+
+async function renderGallery() {
+  let rows;
+  try { rows = await store.listPhotos(); }
+  catch (e) { $('#galErr').textContent = 'Nu pot încărca pozele: ' + e.message; $('#galErr').hidden = false; return; }
+  $('#galErr').hidden = true;
+  revoke(photos.flatMap(p => [p.url, p.thumbUrl]));
+  photos = rows;
+  const grid = $('#gallery');
+  grid.innerHTML = '';
+  photos.forEach((p, i) => {
+    const b = document.createElement('button');
+    b.className = 'shot'; b.type = 'button';
+    b.style.setProperty('--tilt', (tilt(p.id) / 2.5) + 'deg');
+    b.innerHTML = `<figure style="margin:0">
+      <img src="${p.thumbUrl || p.url}" alt="${esc(p.caption || 'Amintire din album')}" loading="lazy">
+      <figcaption>${esc(p.caption || 'Amintire')}${p.from ? `<small>adăugată de ${esc(p.from)}</small>` : ''}</figcaption></figure>`;
+    b.addEventListener('click', () => openLight(i));
+    grid.appendChild(b);
+  });
+  $('#galEmpty').hidden = photos.length > 0;
+  $('#galCountWrap').hidden = photos.length === 0;
+  $('#galCount').textContent = photos.length;
+}
+
+/* --- pick photos --- */
+function renderTray() {
+  const list = $('#tray'); list.innerHTML = '';
+  pending.forEach((p, i) => {
+    const li = document.createElement('li');
+    li.innerHTML = `<img src="${p.url}" alt=""><button type="button" class="drop" aria-label="Scoate poza">✕</button>`;
+    li.querySelector('.drop').addEventListener('click', () => {
+      revoke([p.url]); pending.splice(i, 1); renderTray();
+    });
+    list.appendChild(li);
+  });
+  $('#trayEmpty').hidden = pending.length > 0;
+}
+
+async function addFiles(files) {
+  for (const f of files) {
+    if (!f.type.startsWith('image/')) continue;
+    try { pending.push(await prepare(f)); }
+    catch { toast(`Nu pot deschide poza ${f.name || ''}`); }
+  }
+  renderTray();
+}
+$('#galFileIn').addEventListener('change', async e => { await addFiles([...e.target.files]); e.target.value = ''; });
+$('#galCamIn').addEventListener('change', async e => { await addFiles([...e.target.files]); e.target.value = ''; });
+
+function clearPending() { revoke(pending.map(p => p.url)); pending = []; renderTray(); }
+
+$('#btnAddPhotos').addEventListener('click', () => {
+  clearPending();
+  $('#formPhotos').reset();
+  $('#photoFrom').value = localStorage.getItem('myName') || '';
+  $('#photosErr').hidden = true;
+  $('#dlgPhotos').showModal();
+});
+$('#dlgPhotos').addEventListener('close', clearPending);
+
+$('#formPhotos').addEventListener('submit', async e => {
+  e.preventDefault();
+  const from = $('#photoFrom').value.trim(), caption = $('#photoCaption').value.trim();
+  if (!from) return;
+  if (!pending.length) { $('#photosErr').textContent = 'Alege cel puțin o poză.'; $('#photosErr').hidden = false; return; }
+  localStorage.setItem('myName', from);
+  // Ask the browser not to evict the album if storage runs low.
+  navigator.storage?.persist?.().catch(() => {});
+  const btn = $('#btnSavePhotos'); btn.disabled = true;
+  const total = pending.length;
+  try {
+    // Saved photos leave the tray one by one, so a retry after an error
+    // picks up where it stopped instead of saving the same photo twice.
+    while (pending.length) {
+      btn.textContent = total > 1 ? `Se salvează ${total - pending.length + 1} din ${total}…` : 'Se salvează…';
+      const p = pending[0];
+      await store.addPhoto({ photo: p.photo, thumb: p.thumb, caption, from });
+      revoke([p.url]); pending.shift();
+    }
+    $('#dlgPhotos').close();
+    toast(total > 1 ? `${total} poze salvate!` : 'Poza e salvată!');
+  } catch (err) {
+    $('#photosErr').textContent = 'Nu s-au putut salva toate pozele: ' + err.message;
+    $('#photosErr').hidden = false;
+    renderTray();
+  } finally {
+    btn.disabled = false; btn.textContent = 'Salvează pozele';
+    await renderGallery();
+  }
+});
+
+/* --- lightbox --- */
+function showLight() {
+  const p = photos[lightIdx]; if (!p) return;
+  $('#lightImg').src = p.url;
+  $('#lightImg').alt = p.caption || 'Amintire din album';
+  $('#lightCap').textContent = p.caption || '';
+  $('#lightMeta').textContent = [p.from && `adăugată de ${p.from}`, `${lightIdx + 1} / ${photos.length}`].filter(Boolean).join(' · ');
+  const prev = $('#lightPrev'), next = $('#lightNext');
+  prev.disabled = lightIdx === 0;
+  next.disabled = lightIdx === photos.length - 1;
+  // Reaching an end disables the button you just used; hand focus to the other
+  // one so tab/keyboard navigation doesn't fall out of the dialog.
+  if (document.activeElement === prev && prev.disabled) (next.disabled ? $('#dlgLight .close') : next).focus();
+  if (document.activeElement === next && next.disabled) (prev.disabled ? $('#dlgLight .close') : prev).focus();
+}
+function openLight(i) { lightIdx = i; showLight(); $('#dlgLight').showModal(); }
+function step(d) { const n = lightIdx + d; if (n >= 0 && n < photos.length) { lightIdx = n; showLight(); } }
+$('#lightPrev').addEventListener('click', () => step(-1));
+$('#lightNext').addEventListener('click', () => step(1));
+document.addEventListener('keydown', e => {
+  if (!$('#dlgLight').open) return;
+  if (e.key === 'ArrowLeft') { e.preventDefault(); step(-1); }
+  if (e.key === 'ArrowRight') { e.preventDefault(); step(1); }
+});
+$('#dlgLight').addEventListener('close', () => { $('#lightImg').removeAttribute('src'); });
+
 /* ---------- boot ---------- */
 renderWall();
+renderGallery();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
