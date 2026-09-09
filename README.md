@@ -18,6 +18,7 @@ The workflow rewrites `CACHE` in `sw.js` to the commit SHA before publishing, so
 - `index.html`, `app.js` — UI: polaroid wall, add-yourself flow (camera + 20 s voice note + signature), per-student page with sticky-note impressions, and the shared photo gallery (*Amintiri*) with its full-screen viewer.
 - `store.js` — data layer. `LocalStore` (IndexedDB, default) or `RemoteStore` (your backend).
 - `config.js` — set `window.API_BASE` to switch to the backend. Empty string = local only.
+- `export.js`, `zip.js`, `pdf.js` — the download: a browsable offline copy of the album as a `.zip`, and a printable `.pdf`. See [Taking the album home](#taking-the-album-home).
 - `sw.js`, `manifest.webmanifest`, `icon*.svg`, `icon*.png` — installable/offline app shell. `CACHE` is stamped at deploy time by CI.
 - `tools/make-icons.py` — regenerates the PNG icons from the two SVGs. Not deployed.
 
@@ -55,6 +56,46 @@ rather than taking over: a child halfway through a photo, a recording and a sign
 should not have the page swapped under them. The page shows a "versiune nouă" banner,
 and only when the reader accepts does the worker activate and the page reload — whole,
 never half-new. A page left open for days re-checks hourly.
+
+## Taking the album home
+
+**Descarcă albumul** in the header offers two copies of the album as it stands.
+Both are read-only, and that is the point: an album a child takes home should be a
+keepsake, not a second editable copy that quietly drifts from the real one. Both are
+built in the browser from `store`, so they work the same against IndexedDB or a
+backend, and they work with no network — the three scripts are precached with the
+rest of the shell.
+
+**`.zip` — the whole album, browsable offline.** A folder of plain HTML: `index.html`
+with the polaroid wall and the photo grid, a page per classmate under `elevi/` with
+their portrait, voice note, signature and every impression, `amintiri.html` with the
+photos full-size, and `media/` holding the actual files. There is **no JavaScript in
+it at all** — no forms, no service worker, nothing to go stale — so it opens off a
+memory stick years from now by double-clicking `index.html`. `date.json` carries the
+same data structured, for whatever comes after this app. `zip.js` writes the archive:
+local header, central directory, CRC-32, text deflated through `CompressionStream`
+where the browser has it, photos and audio stored as-is because they are compressed
+already. Blobs stay Blobs in the parts list and are read once to hash, so a large
+album never sits in memory twice.
+
+**`.pdf` — one file to print.** Cover, the wall, a page per classmate with their
+impressions as the same coloured sticky notes, then the photos. Bookmarked by
+section. `pdf.js` writes it by hand — objects, xref, content streams — because the
+repo has no build step and a PDF does not need one. Photos go in as JPEG bytes
+(`/DCTDecode`) after a resize through canvas, which also flattens the transparent
+signature PNGs onto white. Voice notes cannot travel in a PDF; the cover says so and
+points at the `.zip`.
+
+Text is the one place a PDF fights Romanian. Nothing is embedded — the two Helvetica
+faces are the reader's — but WinAnsi has `â` and `î` and not `ă`, `ș` or `ț`. So six
+codes WinAnsi spends on glyphs no Romanian word needs (`Scaron` and friends) are
+remapped to `abreve`, `scedilla`, `tcommaaccent` and their capitals, which every
+substitute font actually has, and a `/ToUnicode` map sends them back to U+0103,
+U+0219 and U+021B — the page shows `ș`, and copying it out of the PDF yields the
+right code point rather than a cedilla or a question mark. Widths are declared in
+`/Widths` and measured with those same numbers, so a line that fits when we lay it
+out fits when the reader draws it. Titles and bookmarks are UTF-16BE instead, since
+PDF reads those itself rather than drawing them with our font.
 
 ## Backend contract (what `RemoteStore` expects)
 All requests carry `X-Class-Code: <code>`; the client prompts for it once and keeps it in `localStorage`. Return 401/403 to make the client forget it and re-prompt.

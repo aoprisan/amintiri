@@ -229,6 +229,21 @@ dialog.light::backdrop{background:rgba(28,37,65,.9)}
 .instr{margin:0; padding-left:22px}
 .instr li{margin:8px 0}
 
+/* ---- download ---- */
+.choices{display:flex; flex-direction:column; gap:14px; margin:18px 0 0}
+.choice{display:flex; gap:14px; align-items:flex-start; text-align:left; width:100%; padding:14px 16px;
+  border:2px solid var(--ink); background:#fff; color:var(--ink); border-radius:8px; box-shadow:3px 3px 0 var(--ink);
+  transition:transform .08s, box-shadow .08s}
+.choice:active{transform:translate(2px,2px); box-shadow:1px 1px 0 var(--ink)}
+.choice:disabled{opacity:.45; box-shadow:none; cursor:default}
+.choice .what{font-family:var(--display); font-size:1.45rem; line-height:1; display:block}
+.choice .why{display:block; font-size:.92rem; color:var(--ink-soft); font-weight:400; margin-top:4px}
+.choice .glyph{font-size:1.8rem; line-height:1.1}
+.progress{margin-top:18px}
+.progress .track{height:12px; border:2px solid var(--ink); border-radius:999px; overflow:hidden; background:#eef3f9}
+.progress .fill{height:100%; width:0; background:var(--yellow); transition:width .2s}
+.progress p{margin:8px 0 0; font-weight:700; font-size:.95rem}
+
 .toast{position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:var(--ink); color:#fff; padding:10px 18px; border-radius:8px; font-weight:700; opacity:0; pointer-events:none; transition:opacity .2s}
 .toast.show{opacity:1}
 .err{color:var(--red); font-weight:700}
@@ -241,6 +256,7 @@ dialog.light::backdrop{background:rgba(28,37,65,.9)}
   <div class="count" id="count" hidden>Suntem <b id="countN">0</b> în album</div>
   <div class="headtools">
     <button type="button" class="btn primary" id="btnInstall" hidden>Instalează albumul</button>
+    <button type="button" class="btn" id="btnExport">Descarcă albumul</button>
     <span class="pill" id="offlinePill" hidden>Ești offline</span>
   </div>
 </header>
@@ -416,6 +432,38 @@ dialog.light::backdrop{background:rgba(28,37,65,.9)}
   </div>
 </dialog>
 
+<!-- DOWNLOAD: a read-only copy of the album to keep -->
+<dialog id="dlgExport">
+  <div class="sheet">
+    <button class="close" data-close aria-label="Închide">✕</button>
+    <h2>Ia albumul cu tine</h2>
+    <p class="hint">O copie a albumului așa cum e acum, numai de citit: poze, semnături,
+    mesaje vocale și toate impresiile. Nu se poate scrie în ea, așa că albumul de aici
+    rămâne singurul care se schimbă.</p>
+
+    <div class="choices">
+      <button type="button" class="choice" id="btnExportZip">
+        <span class="glyph" aria-hidden="true">🗂️</span>
+        <span><span class="what">Tot albumul (.zip)</span>
+        <span class="why">Un dosar cu pagini de răsfoit în browser, fără internet — și cu
+        mesajele vocale. Dezarhivează-l și deschide <b>index.html</b>.</span></span>
+      </button>
+      <button type="button" class="choice" id="btnExportPdf">
+        <span class="glyph" aria-hidden="true">📄</span>
+        <span><span class="what">Album de tipărit (.pdf)</span>
+        <span class="why">Un singur fișier: coperta, zidul cu colegi, o pagină pentru
+        fiecare cu impresiile lui și toate amintirile. Vocile rămân în .zip.</span></span>
+      </button>
+    </div>
+
+    <div class="progress" id="exportBar" hidden>
+      <div class="track"><div class="fill" id="exportFill"></div></div>
+      <p id="exportLabel" role="status"></p>
+    </div>
+    <p id="exportErr" class="err" hidden></p>
+  </div>
+</dialog>
+
 <!-- HOW TO INSTALL (iOS has no install prompt of its own) -->
 <dialog id="dlgInstall">
   <div class="sheet">
@@ -448,5 +496,8 @@ dialog.light::backdrop{background:rgba(28,37,65,.9)}
 <script src="config.js"></script>
 <script src="store.js"></script>
 <script src="app.js"></script>
+<script src="zip.js"></script>
+<script src="pdf.js"></script>
+<script src="export.js"></script>
 </body>
 </html>
