@@ -4,11 +4,20 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#ffffff">
+<meta name="description" content="Albumul de absolvire al clasei: poza fiecăruia, vocea lui, semnătura și amintirile din anul acesta.">
 <title>Album de absolvire — Clasa a IV-a</title>
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="apple-touch-icon" href="icon.svg">
-<link rel="icon" href="icon.svg">
+<!-- iOS ignores the manifest: it takes the name, the icon and the standalone
+     mode from these instead, and it will not use an SVG touch icon. -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Album IV">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="icon" href="icon-192.png" sizes="192x192" type="image/png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Patrick+Hand&family=Nunito:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -201,6 +210,25 @@ dialog.light::backdrop{background:rgba(28,37,65,.9)}
 .light .nav.prev{left:10px}.light .nav.next{right:10px}
 .light .nav[disabled]{opacity:.3; cursor:default}
 
+/* ---- install / update / offline ---- */
+.headtools{display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:18px}
+.pill{
+  display:inline-flex; align-items:center; gap:8px; font-weight:700; font-size:.95rem;
+  padding:6px 12px; border-radius:999px; background:#fff; border:2px dashed var(--ink-soft); color:var(--ink-soft);
+}
+.pill::before{content:""; width:9px; height:9px; border-radius:50%; background:var(--ink-soft)}
+.update{
+  position:fixed; left:50%; transform:translateX(-50%); bottom:calc(24px + env(safe-area-inset-bottom));
+  z-index:30; display:flex; align-items:center; gap:12px; flex-wrap:wrap; justify-content:center;
+  background:#fff; border:2px solid var(--ink); box-shadow:4px 4px 0 var(--ink); border-radius:10px;
+  padding:12px 16px; width:min(92vw,420px); font-weight:700;
+}
+/* Text on its own line so the two buttons sit side by side underneath. */
+.update span{flex:1 1 100%}
+.update .btn{padding:6px 12px; box-shadow:2px 2px 0 var(--ink)}
+.instr{margin:0; padding-left:22px}
+.instr li{margin:8px 0}
+
 .toast{position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:var(--ink); color:#fff; padding:10px 18px; border-radius:8px; font-weight:700; opacity:0; pointer-events:none; transition:opacity .2s}
 .toast.show{opacity:1}
 .err{color:var(--red); font-weight:700}
@@ -211,6 +239,10 @@ dialog.light::backdrop{background:rgba(28,37,65,.9)}
   <h1>Clasa a IV-a<br><mark>Promoția 2026</mark></h1>
   <p>Albumul nostru de absolvire: poză, vocea ta și câteva vorbe de la colegi.</p>
   <div class="count" id="count" hidden>Suntem <b id="countN">0</b> în album</div>
+  <div class="headtools">
+    <button type="button" class="btn primary" id="btnInstall" hidden>Instalează albumul</button>
+    <span class="pill" id="offlinePill" hidden>Ești offline</span>
+  </div>
 </header>
 
 <main>
@@ -383,6 +415,33 @@ dialog.light::backdrop{background:rgba(28,37,65,.9)}
     <button type="button" class="nav next" id="lightNext" aria-label="Poza următoare">›</button>
   </div>
 </dialog>
+
+<!-- HOW TO INSTALL (iOS has no install prompt of its own) -->
+<dialog id="dlgInstall">
+  <div class="sheet">
+    <button class="close" data-close aria-label="Închide">✕</button>
+    <h2>Pune albumul pe ecranul telefonului</h2>
+    <p class="hint">Așa îl deschizi ca pe orice altă aplicație, și merge și fără internet.</p>
+    <ol class="instr" id="instrIos">
+      <li>Apasă butonul <b>Distribuie</b> (pătratul cu săgeata în sus), jos în Safari.</li>
+      <li>Alege <b>Adaugă pe ecranul principal</b>.</li>
+      <li>Apasă <b>Adaugă</b>. Gata!</li>
+    </ol>
+    <ol class="instr" id="instrOther" hidden>
+      <li>Deschide meniul browserului (⋮ sau ⋯).</li>
+      <li>Alege <b>Instalează aplicația</b> sau <b>Adaugă pe ecranul principal</b>.</li>
+      <li>Confirmă. Gata!</li>
+    </ol>
+    <div class="row"><button type="button" class="btn primary" data-close>Am înțeles</button></div>
+  </div>
+</dialog>
+
+<!-- A new deploy is ready; the worker waits until the user says so. -->
+<div class="update" id="updateBar" role="status" hidden>
+  <span>A apărut o versiune nouă a albumului.</span>
+  <button type="button" class="btn primary" id="btnUpdate">Reîncarcă</button>
+  <button type="button" class="btn" id="btnUpdateLater">Mai târziu</button>
+</div>
 
 <div class="toast" id="toast" role="status"></div>
 
