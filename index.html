@@ -19,6 +19,9 @@
   --body:'Nunito',system-ui,sans-serif;
 }
 *{box-sizing:border-box}
+/* Author rules like .frame video{display:block} outrank the browser's own
+   [hidden]{display:none}, so hidden elements need this to actually hide. */
+[hidden]{display:none!important}
 html,body{margin:0}
 body{
   font-family:var(--body); color:var(--ink); background:var(--paper);
@@ -228,7 +231,7 @@ dialog.light::backdrop{background:rgba(28,37,65,.9)}
           <button type="button" class="btn primary" id="btnSnap" hidden>Fă poza</button>
           <button type="button" class="btn" id="btnRetake" hidden>Altă poză</button>
           <label class="btn" for="fileIn" style="margin:0">Alege din telefon</label>
-          <input id="fileIn" type="file" accept="image/*" capture="user" hidden>
+          <input id="fileIn" type="file" accept="image/*" hidden>
         </div>
       </div>
 
