@@ -16,7 +16,7 @@ async function renderWall() {
   let rows;
   try { rows = await store.listStudents(); }
   catch (e) { $('#empty').hidden = false; $('#empty').textContent = 'Nu pot încărca albumul: ' + e.message; return; }
-  revoke(students.flatMap(s => [s.photoUrl, s.audioUrl]));
+  revoke(students.flatMap(s => [s.photoUrl, s.audioUrl, s.signatureUrl]));
   students = rows;
   const wall = $('#wall');
   wall.innerHTML = '';
@@ -27,7 +27,8 @@ async function renderWall() {
     card.style.setProperty('--tape-tilt', (tilt(s.name) * 1.5) + 'deg');
     card.innerHTML = `<figure style="margin:0">
       ${s.photoUrl ? `<img src="${s.photoUrl}" alt="">` : `<div class="noimg">${esc(initials(s.name))}</div>`}
-      <figcaption>${esc(s.name)}<small>${s.audioUrl ? 'are un mesaj vocal' : 'fără mesaj vocal'}</small></figcaption></figure>`;
+      <figcaption>${esc(s.name)}<small>${s.audioUrl ? 'are un mesaj vocal' : 'fără mesaj vocal'}</small>
+        ${s.signatureUrl ? `<img class="sig" src="${s.signatureUrl}" alt="" loading="lazy">` : ''}</figcaption></figure>`;
     card.addEventListener('click', () => openView(s));
     wall.appendChild(card);
   }
@@ -132,22 +133,94 @@ function stopRec() {
   $('#btnRec').textContent = 'Înregistrează din nou'; $('#btnRec').setAttribute('aria-pressed', 'false');
 }
 
+/* ---------- add self: signature (finger or mouse) ---------- */
+const sig = $('#sig'), sctx = sig.getContext('2d');
+let sigDrawing = false, sigLast = null, sigBox = null, sigScale = 1;
+
+// The pad lives in a closed dialog at load time, so it has no size until the
+// dialog opens; size it there and again only while it is still blank.
+function sizeSignature() {
+  const r = sig.getBoundingClientRect();
+  if (!r.width || !r.height) return;
+  sigScale = Math.min(window.devicePixelRatio || 1, 3);
+  sig.width = Math.round(r.width * sigScale);
+  sig.height = Math.round(r.height * sigScale);
+  sctx.setTransform(sigScale, 0, 0, sigScale, 0, 0);
+  sctx.strokeStyle = sctx.fillStyle = '#1c2541';
+  sctx.lineWidth = 3; sctx.lineCap = sctx.lineJoin = 'round';
+}
+function clearSignature() {
+  sctx.setTransform(1, 0, 0, 1, 0, 0); sctx.clearRect(0, 0, sig.width, sig.height);
+  sctx.setTransform(sigScale, 0, 0, sigScale, 0, 0);
+  sigBox = null; sigDrawing = false; sigLast = null;
+  $('#sigWrap').classList.remove('signed'); $('#btnSigClear').disabled = true;
+}
+function sigPoint(e) {
+  const r = sig.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+function sigMark(p) {
+  sigBox = sigBox
+    ? { x0: Math.min(sigBox.x0, p.x), y0: Math.min(sigBox.y0, p.y), x1: Math.max(sigBox.x1, p.x), y1: Math.max(sigBox.y1, p.y) }
+    : { x0: p.x, y0: p.y, x1: p.x, y1: p.y };
+}
+
+sig.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  sig.setPointerCapture(e.pointerId);
+  sigDrawing = true; sigLast = sigPoint(e);
+  // A tap without a drag should still leave a dot.
+  sctx.beginPath(); sctx.arc(sigLast.x, sigLast.y, sctx.lineWidth / 2, 0, Math.PI * 2); sctx.fill();
+  sigMark(sigLast);
+  $('#sigWrap').classList.add('signed'); $('#btnSigClear').disabled = false;
+});
+sig.addEventListener('pointermove', e => {
+  if (!sigDrawing) return;
+  e.preventDefault();
+  // Coalesced events keep a fast finger from turning curves into corners.
+  for (const ev of (e.getCoalescedEvents?.() || [e])) {
+    const p = sigPoint(ev);
+    sctx.beginPath(); sctx.moveTo(sigLast.x, sigLast.y); sctx.lineTo(p.x, p.y); sctx.stroke();
+    sigLast = p; sigMark(p);
+  }
+});
+for (const ev of ['pointerup', 'pointercancel']) sig.addEventListener(ev, () => { sigDrawing = false; });
+// Rotating the phone changes the pad's width; re-fit it, but never over a signature.
+window.addEventListener('resize', () => { if ($('#dlgAdd').open && !sigBox) sizeSignature(); });
+$('#btnSigClear').addEventListener('click', clearSignature);
+
+// Crop to the ink so a signature scribbled in one corner isn't mostly blank.
+function signatureBlob() {
+  if (!sigBox) return Promise.resolve(null);
+  const pad = 10;
+  const x = Math.max(0, (sigBox.x0 - pad) * sigScale), y = Math.max(0, (sigBox.y0 - pad) * sigScale);
+  const w = Math.min(sig.width - x, (sigBox.x1 - sigBox.x0 + pad * 2) * sigScale);
+  const h = Math.min(sig.height - y, (sigBox.y1 - sigBox.y0 + pad * 2) * sigScale);
+  const k = Math.min(1, 800 / w);
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k));
+  c.getContext('2d').drawImage(sig, x, y, w, h, 0, 0, c.width, c.height);
+  return new Promise(r => c.toBlob(r, 'image/png')); // transparent, so it sits on the paper
+}
+
 /* ---------- add self: save ---------- */
 function openAdd() {
   audioBlob = null;
   $('#formAdd').reset(); stopCam(); clearPhoto();
   $('#audioPreview').hidden = true; $('#timer').textContent = fmt(0); $('#btnRec').textContent = 'Înregistrează'; $('#addErr').hidden = true;
   $('#dlgAdd').showModal();
+  sizeSignature(); clearSignature();
 }
 $('#dlgAdd').addEventListener('close', () => { stopCam(); if (rec?.state === 'recording') stopRec(); });
 
 $('#formAdd').addEventListener('submit', async e => {
   e.preventDefault();
   const name = $('#name').value.trim(); if (!name) return;
-  if (!photoBlob && !audioBlob) { $('#addErr').textContent = 'Adaugă cel puțin o poză sau o înregistrare.'; $('#addErr').hidden = false; return; }
+  const signature = await signatureBlob();
+  if (!photoBlob && !audioBlob && !signature) { $('#addErr').textContent = 'Adaugă cel puțin o poză, o înregistrare sau o semnătură.'; $('#addErr').hidden = false; return; }
   $('#btnSave').disabled = true; $('#btnSave').textContent = 'Se salvează…';
   try {
-    await store.createStudent({ name, photo: photoBlob, audio: audioBlob });
+    await store.createStudent({ name, photo: photoBlob, audio: audioBlob, signature });
     $('#dlgAdd').close(); toast(`Bun venit în album, ${name}!`); await renderWall();
   } catch (err) { $('#addErr').textContent = 'Nu s-a putut salva: ' + err.message; $('#addErr').hidden = false; }
   finally { $('#btnSave').disabled = false; $('#btnSave').textContent = 'Salvează în album'; }
@@ -161,6 +234,9 @@ async function openView(s) {
   $('#viewPhoto').innerHTML = s.photoUrl ? `<img src="${s.photoUrl}" alt="Poza lui/ei ${esc(s.name)}">` : `<div class="noimg">${esc(initials(s.name))}</div>`;
   const a = $('#viewAudio'); a.hidden = !s.audioUrl; $('#viewNoAudio').hidden = !!s.audioUrl;
   if (s.audioUrl) a.src = s.audioUrl;
+  $('#viewSigWrap').hidden = !s.signatureUrl;
+  if (s.signatureUrl) { $('#viewSig').src = s.signatureUrl; $('#viewSig').alt = `Semnătura lui/ei ${s.name}`; }
+  else $('#viewSig').removeAttribute('src');
   $('#formNote').reset(); $('#noteErr').hidden = true;
   $('#noteFrom').value = localStorage.getItem('myName') || '';
   await renderNotes();
