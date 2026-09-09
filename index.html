@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#ffffff">
-<meta name="description" content="Albumul de absolvire al clasei: poza fiecăruia, vocea lui, semnătura și amintirile din anul acesta.">
+<meta name="description" content="Albumul de absolvire al clasei: poza fiecăruia, vocea lui, semnătura, peretele cu desene și amintirile din anul acesta.">
 <title>Album de absolvire — Clasa a IV-a</title>
 <link rel="manifest" href="manifest.webmanifest">
 <!-- iOS ignores the manifest: it takes the name, the icon and the standalone
@@ -210,6 +210,63 @@ dialog.light::backdrop{background:rgba(28,37,65,.9)}
 .light .nav.prev{left:10px}.light .nav.next{right:10px}
 .light .nav[disabled]{opacity:.3; cursor:default}
 
+/* ---- drawing wall ---- */
+.mural{
+  position:relative; margin:18px auto 0; max-width:560px; background:#fff; padding:12px 12px 14px;
+  box-shadow:0 2px 3px rgba(28,37,65,.08),0 10px 24px -8px rgba(28,37,65,.25); transform:rotate(-.6deg);
+}
+.mural::before,.mural::after{content:""; position:absolute; top:-10px; width:70px; height:22px; background:var(--tape); box-shadow:0 1px 1px rgba(0,0,0,.08)}
+.mural::before{left:26px; transform:rotate(-6deg)}
+.mural::after{right:26px; transform:rotate(5deg)}
+.mural canvas{display:block; width:100%; height:auto; background:#fffdf7; cursor:pointer}
+.mural .ph{
+  position:absolute; left:12px; right:12px; top:40%; margin:0; text-align:center; padding:0 20px;
+  color:var(--ink-soft); font-family:var(--display); font-size:1.5rem; line-height:1.15; pointer-events:none;
+}
+.mural figcaption{font-family:var(--display); font-size:1.15rem; margin-top:8px; line-height:1.2; color:var(--ink-soft)}
+.mural figcaption:empty{display:none}
+
+/* the easel: a full-screen sheet with the wall to draw on and the tools under it */
+dialog.draw{max-width:100vw; width:100%; height:100%; max-height:100vh; background:transparent}
+dialog.draw::backdrop{background:rgba(28,37,65,.9)}
+.easel{
+  position:relative; height:100%; max-width:760px; margin:0 auto; display:flex; flex-direction:column; gap:8px;
+  background:#fff; padding:10px 12px calc(10px + env(safe-area-inset-bottom));
+}
+.easel h2{font-family:var(--display); font-size:1.8rem; margin:0; line-height:1; padding-right:48px}
+.easel .hint{margin:0}
+.board{flex:1; min-height:0; display:grid; place-items:center}
+.paper{
+  position:relative; background:#fffdf7; outline:2px solid var(--ink);
+  box-shadow:0 2px 3px rgba(28,37,65,.08),0 10px 24px -8px rgba(28,37,65,.35);
+}
+.paper canvas{position:absolute; inset:0; width:100%; height:100%; display:block}
+.paper #drawInk{touch-action:none; cursor:crosshair} /* the finger draws instead of scrolling */
+.tools{display:flex; flex-direction:column; gap:8px}
+.tools .row{gap:8px}
+.tools input[type=text]{flex:1; width:auto; min-width:140px; padding:8px 12px}
+.tools .btn{padding:8px 12px; box-shadow:2px 2px 0 var(--ink)}
+.tools .btn:active{box-shadow:1px 1px 0 var(--ink)}
+.tools .btn.tool[aria-pressed=true]{background:var(--ink); color:#fff}
+.palette{display:flex; gap:7px; flex-wrap:wrap; align-items:center}
+.palette label,.sizes label{position:relative; margin:0}
+.palette input[type=radio],.sizes input{position:absolute; opacity:0; width:0; height:0}
+.palette span{
+  display:block; width:29px; height:29px; border-radius:50%; background:var(--c);
+  border:3px solid #fff; box-shadow:0 0 0 2px #cfd8e6; cursor:pointer; transition:transform .08s;
+}
+.palette input:checked+span{box-shadow:0 0 0 3px var(--ink); transform:scale(1.12)}
+.palette input:focus-visible+span{outline:3px solid var(--blue); outline-offset:3px}
+/* any other colour: a rainbow ring around the colour picked last */
+.palette .custom span{background:conic-gradient(#e4572e,#f7c948,#6aae6e,#3e7cb1,#8e5bd1,#e982b8,#e4572e); position:relative}
+.palette .custom span::after{content:""; position:absolute; inset:5px; border-radius:50%; background:var(--c); border:2px solid #fff}
+.palette input[type=color]{position:absolute; inset:0; width:100%; height:100%; opacity:0; border:0; padding:0; cursor:pointer}
+.sizes{display:flex; gap:6px}
+.sizes span{display:grid; place-items:center; width:40px; height:40px; border:2px solid var(--ink); border-radius:8px; background:#fff; cursor:pointer}
+.sizes span::before{content:""; width:var(--d); height:var(--d); border-radius:50%; background:var(--ink)}
+.sizes input:checked+span{background:var(--yellow)}
+.sizes input:focus-visible+span{outline:3px solid var(--blue); outline-offset:2px}
+
 /* ---- install / update / offline ---- */
 .headtools{display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:18px}
 .pill{
@@ -264,6 +321,21 @@ dialog.light::backdrop{background:rgba(28,37,65,.9)}
 <main>
   <div id="wall" class="wall" aria-live="polite"></div>
   <p id="empty" class="empty" hidden>Albumul e gol. Fii primul care se adaugă!</p>
+
+  <section>
+    <div class="sec-head">
+      <h2>Peretele cu desene</h2>
+      <button type="button" class="btn" id="btnDraw">+ Desenează pe perete</button>
+    </div>
+    <p class="hint" style="margin:6px 0 0">Un perete pe care toată clasa desenează și semnează. Fiecare adaugă ceva peste ce e deja.</p>
+    <div class="count" id="muralCountWrap" hidden><b id="muralCount">0</b> <span id="muralCountLabel">desene</span> pe perete</div>
+    <figure class="mural" id="muralWrap">
+      <canvas id="mural" width="1200" height="1500" role="img" aria-label="Peretele cu desene, încă gol"></canvas>
+      <p class="ph" id="muralEmpty">Peretele e gol. Ia o culoare și lasă-ți semnătura sau un desen!</p>
+      <figcaption id="muralWho"></figcaption>
+    </figure>
+    <p id="muralErr" class="err" hidden></p>
+  </section>
 
   <section>
     <div class="sec-head">
@@ -417,6 +489,51 @@ dialog.light::backdrop{background:rgba(28,37,65,.9)}
         <button type="submit" class="btn primary" id="btnSavePhotos">Salvează pozele</button>
         <button type="button" class="btn" data-close>Renunță</button>
       </div>
+    </form>
+  </div>
+</dialog>
+
+<!-- DRAW ON THE WALL -->
+<dialog id="dlgDraw" class="draw" aria-label="Desenează pe perete">
+  <div class="easel">
+    <button class="close" id="btnDrawClose" aria-label="Închide">✕</button>
+    <h2>Desenează pe perete</h2>
+    <p class="hint">Alege o culoare și desenează cu degetul: semnează, lasă un desen, scrie un gând. Rămâne pe perete pentru toți.</p>
+    <div class="board" id="board">
+      <div class="paper" id="paper">
+        <canvas id="drawBase" width="1200" height="1500" aria-hidden="true"></canvas>
+        <canvas id="drawInk" width="1200" height="1500" role="img" aria-label="Zonă de desen: desenează cu degetul"></canvas>
+      </div>
+    </div>
+    <form id="formDraw" class="tools">
+      <div class="palette" role="radiogroup" aria-label="Culoarea">
+        <label><input type="radio" name="ink" value="#1c2541" checked aria-label="Albastru închis"><span style="--c:#1c2541"></span></label>
+        <label><input type="radio" name="ink" value="#e4572e" aria-label="Roșu"><span style="--c:#e4572e"></span></label>
+        <label><input type="radio" name="ink" value="#f28c28" aria-label="Portocaliu"><span style="--c:#f28c28"></span></label>
+        <label><input type="radio" name="ink" value="#f7c948" aria-label="Galben"><span style="--c:#f7c948"></span></label>
+        <label><input type="radio" name="ink" value="#6aae6e" aria-label="Verde"><span style="--c:#6aae6e"></span></label>
+        <label><input type="radio" name="ink" value="#3e7cb1" aria-label="Albastru"><span style="--c:#3e7cb1"></span></label>
+        <label><input type="radio" name="ink" value="#8e5bd1" aria-label="Mov"><span style="--c:#8e5bd1"></span></label>
+        <label><input type="radio" name="ink" value="#e982b8" aria-label="Roz"><span style="--c:#e982b8"></span></label>
+        <label><input type="radio" name="ink" value="#8b5a2b" aria-label="Maro"><span style="--c:#8b5a2b"></span></label>
+        <label class="custom"><input type="radio" name="ink" value="custom" aria-label="Altă culoare"><span id="customSw" style="--c:#00a3a3"></span>
+          <input type="color" id="inkPick" value="#00a3a3" aria-label="Alege orice culoare"></label>
+      </div>
+      <div class="row">
+        <div class="sizes" role="radiogroup" aria-label="Grosimea liniei">
+          <label><input type="radio" name="size" value="5" aria-label="Subțire"><span style="--d:6px"></span></label>
+          <label><input type="radio" name="size" value="10" checked aria-label="Medie"><span style="--d:12px"></span></label>
+          <label><input type="radio" name="size" value="20" aria-label="Groasă"><span style="--d:20px"></span></label>
+        </div>
+        <button type="button" class="btn tool" id="btnEraser" aria-pressed="false">Radieră</button>
+        <button type="button" class="btn" id="btnUndo" disabled>Înapoi</button>
+        <button type="button" class="btn" id="btnDrawClear" disabled>Șterge tot</button>
+      </div>
+      <div class="row">
+        <input id="drawFrom" type="text" maxlength="40" required autocomplete="off" placeholder="Prenumele tău" aria-label="Cine desenează?">
+        <button type="submit" class="btn primary" id="btnSaveDraw">Lipește pe perete</button>
+      </div>
+      <p id="drawErr" class="err" hidden style="margin:0"></p>
     </form>
   </div>
 </dialog>

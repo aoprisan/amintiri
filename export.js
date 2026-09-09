@@ -106,8 +106,10 @@
       created.push(...rows.flatMap(s => [s.photoUrl, s.audioUrl, s.signatureUrl]));
       const shots = await store.listPhotos();
       created.push(...shots.flatMap(p => [p.url, p.thumbUrl]));
+      const layers = await store.listDrawings();
+      created.push(...layers.map(d => d.url));
 
-      const total = rows.length + shots.length || 1;
+      const total = rows.length + shots.length + layers.length || 1;
       let done = 0;
       const students = [];
       for (const s of rows) {
@@ -132,11 +134,37 @@
         progress(0.02 + 0.38 * (++done / total), `Adun pozele… ${photos.length}/${shots.length}`);
       }
 
-      return { students, photos, at: new Date(), head: heading() };
+      const drawings = [];
+      for (const d of layers) {
+        drawings.push({ id: d.id, from: d.from || '', createdAt: d.createdAt, image: await grab(d.url) });
+        progress(0.02 + 0.38 * (++done / total), `Adun peretele… ${drawings.length}/${layers.length}`);
+      }
+
+      return { students, photos, drawings, at: new Date(), head: heading() };
     } finally {
       revoke(created);
     }
   }
+
+  // The wall is its layers drawn oldest-first, exactly as the page shows it,
+  // flattened onto the paper colour so the copy is one plain picture. Sized
+  // from the first layer that decodes, so this never has to know the wall's
+  // dimensions. Null when no layer could be read.
+  async function wallCanvas(drawings) {
+    const bmps = [];
+    for (const d of drawings) {
+      if (!d.image) continue;
+      try { bmps.push(await createImageBitmap(d.image)); } catch { /* not in this copy */ }
+    }
+    if (!bmps.length) return null;
+    const c = document.createElement('canvas');
+    c.width = bmps[0].width; c.height = bmps[0].height;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#fffdf7'; ctx.fillRect(0, 0, c.width, c.height);
+    for (const b of bmps) { ctx.drawImage(b, 0, 0, c.width, c.height); b.close?.(); }
+    return c;
+  }
+  const names = drawings => [...new Set(drawings.map(d => String(d.from || '').trim()).filter(Boolean))];
 
   /* ---------- the offline site ---------- */
 
@@ -212,6 +240,14 @@ h3{font-family:var(--display); font-size:1.6rem; margin:26px 0 8px}
 .note cite::before{content:"— "}
 .hint{color:var(--ink-soft)}
 
+/* peretele cu desene */
+.mural{position:relative; margin:18px auto 0; max-width:560px; background:#fff; padding:12px 12px 14px;
+  box-shadow:0 2px 3px rgba(28,37,65,.08),0 10px 24px -8px rgba(28,37,65,.25); transform:rotate(-.6deg)}
+.mural::before,.mural::after{content:""; position:absolute; top:-10px; width:70px; height:22px; background:var(--tape)}
+.mural::before{left:26px; transform:rotate(-6deg)} .mural::after{right:26px; transform:rotate(5deg)}
+.mural img{display:block; width:100%; height:auto; background:#fffdf7}
+.mural figcaption{font-family:var(--display); font-size:1.15rem; margin-top:8px; line-height:1.2; color:var(--ink-soft)}
+
 /* amintiri */
 .gallery{display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:22px 18px; padding:14px 0 0}
 .shot{display:block; background:#fff; padding:8px 8px 10px; color:inherit; text-decoration:none;
@@ -232,8 +268,8 @@ footer{max-width:960px; margin:0 auto; padding:0 20px 60px; color:var(--ink-soft
 
 @media print{
   body{background:#fff}
-  .card,.shot,.big,.note{box-shadow:none; transform:none}
-  .card::before{display:none}
+  .card,.shot,.big,.note,.mural{box-shadow:none; transform:none}
+  .card::before,.mural::before,.mural::after{display:none}
   nav,.back{display:none}
   .big{break-inside:avoid}
 }
@@ -268,7 +304,7 @@ ${body}
 
   async function buildZip(snap, progress) {
     const zip = new Zip();
-    const { students, photos, head, at } = snap;
+    const { students, photos, drawings, head, at } = snap;
     const stamp = longDate(at);
     let missing = 0;
 
@@ -287,6 +323,14 @@ ${body}
       p.media = p.photo ? `media/amintiri/${pad(i + 1, 3)}.${ext(p.photo, 'jpg')}` : null;
       p.thumbMedia = p.thumb ? `media/amintiri/${pad(i + 1, 3)}-mic.${ext(p.thumb, 'jpg')}` : p.media;
     });
+    drawings.forEach((d, i) => {
+      d.media = d.image ? `media/perete/${pad(i + 1, 3)}-${slug(d.from)}.${ext(d.image, 'png')}` : null;
+    });
+    // The whole wall as one picture, next to the layers it is made of.
+    const wallCv = await wallCanvas(drawings);
+    const wallPng = wallCv ? await new Promise(r => wallCv.toBlob(r, 'image/png')) : null;
+    const wallFile = wallPng ? 'media/perete.png' : null;
+    const artists = names(drawings);
 
     /* --- index.html --- */
     const wall = students.map(s => {
@@ -309,10 +353,23 @@ ${body}
         </figure>
       </a>`).join('\n');
 
+    const mural = wallFile ? `  <section>
+    <h2>Peretele cu desene</h2>
+    <figure class="mural">
+      <img src="${wallFile}" alt="Peretele cu desenele și semnăturile colegilor">
+      ${artists.length ? `<figcaption>Au desenat: ${escape(artists.join(', '))}</figcaption>` : ''}
+    </figure>
+  </section>
+` : drawings.length ? `  <section>
+    <h2>Peretele cu desene</h2>
+    <p class="hint">Desenele n-au putut fi citite pentru copia asta.</p>
+  </section>
+` : '';
+
     await zip.add('index.html', page(head.title, `<header>
   <h1>${head.html}</h1>
   ${head.intro ? `<p>${escape(head.intro)}</p>` : ''}
-  <p class="badge">Copie offline · ${count(students.length, 'coleg', 'colegi')} · ${count(photos.length, 'poză', 'poze')} · ${escape(stamp)}</p>
+  <p class="badge">Copie offline · ${count(students.length, 'coleg', 'colegi')} · ${count(photos.length, 'poză', 'poze')}${drawings.length ? ` · ${count(drawings.length, 'desen', 'desene')}` : ''} · ${escape(stamp)}</p>
 </header>
 
 <main>
@@ -320,7 +377,7 @@ ${body}
 ${wall || '      <p class="hint">Albumul era gol când s-a făcut copia.</p>'}
   </div>
 
-  <section>
+${mural}  <section>
     <h2>Amintiri din clasa a IV-a</h2>
     <div class="gallery">
 ${grid || '      <p class="hint">Nicio poză în copie.</p>'}
@@ -409,6 +466,10 @@ ${big || '  <p class="hint">Nicio poză în copie.</p>'}
       if (p.photo) files.push([p.media, p.photo]); else missing++;
       if (p.thumb && p.thumbMedia !== p.media) files.push([p.thumbMedia, p.thumb]);
     }
+    if (wallFile) files.push([wallFile, wallPng]);
+    for (const d of drawings) {
+      if (d.image) files.push([d.media, d.image]); else missing++;
+    }
     let done = 0;
     for (const [name, blob] of files) {
       await zip.add(name, blob, false); // already-compressed bytes; deflate would only cost time
@@ -428,6 +489,12 @@ ${big || '  <p class="hint">Nicio poză în copie.</p>'}
         titlu: p.caption, de_la: p.from, poza: p.media, miniatura: p.thumbMedia,
         data: p.createdAt ? new Date(p.createdAt).toISOString() : null,
       })),
+      perete: {
+        imagine: wallFile,
+        desene: drawings.map(d => ({
+          de_la: d.from, fisier: d.media, data: d.createdAt ? new Date(d.createdAt).toISOString() : null,
+        })),
+      },
     }, null, 2), true);
 
     await zip.add('CITESTE-MA.txt', [
@@ -442,10 +509,11 @@ ${big || '  <p class="hint">Nicio poză în copie.</p>'}
       '  3. Nu ai nevoie de internet. Merge și de pe un stick.',
       '',
       'Ce e înăuntru:',
-      '  index.html      zidul cu colegi si pozele din album',
+      '  index.html      zidul cu colegi, peretele cu desene si pozele din album',
       '  amintiri.html   toate pozele, mari, una sub alta',
       '  elevi/          cate o pagina pentru fiecare coleg',
       '  media/          pozele, semnaturile si mesajele vocale, ca fisiere',
+      '  media/perete.png  peretele cu desene, intreg; in media/perete/ e fiecare desen separat',
       '  date.json       aceleasi date, pentru cine vrea sa le prelucreze',
       '',
       'Copia e doar de citit: nu poti adauga colegi, poze sau impresii in ea.',
@@ -485,7 +553,7 @@ ${big || '  <p class="hint">Nicio poză în copie.</p>'}
   const NOTE_COLORS = { yellow: '#fff2b3', blue: '#d6e8f7', pink: '#fbdbec', green: '#dcf1dd' };
 
   async function buildPdf(snap, progress) {
-    const { students, photos, head, at } = snap;
+    const { students, photos, drawings, head, at } = snap;
     const doc = new Pdf({ title: head.title, author: head.lines.join(' · '), size: Pdf.A4 });
     const CW = doc.W - 2 * M;
     const BOTTOM = doc.H - M;
@@ -494,7 +562,7 @@ ${big || '  <p class="hint">Nicio poză în copie.</p>'}
     // on the child's own page.
     const portraits = new Map(), shots = new Map();
     let step = 0;
-    const totalImgs = students.length * 2 + photos.length || 1;
+    const totalImgs = students.length * 2 + photos.length + (drawings.length ? 1 : 0) || 1;
     const tick = label => progress(0.45 + 0.35 * (++step / totalImgs), label);
 
     for (const s of students) {
@@ -509,6 +577,19 @@ ${big || '  <p class="hint">Nicio poză în copie.</p>'}
       const j = await toJpeg(p.photo || p.thumb, 720, 0.8);
       if (j) shots.set(p.id, doc.image(j.bytes, j.w, j.h));
       tick('Pregătesc amintirile…');
+    }
+    let wallImg = null;
+    if (drawings.length) {
+      const cv = await wallCanvas(drawings);
+      if (cv) {
+        const k = Math.min(1, 1400 / Math.max(cv.width, cv.height));
+        const small = document.createElement('canvas');
+        small.width = Math.max(1, Math.round(cv.width * k)); small.height = Math.max(1, Math.round(cv.height * k));
+        small.getContext('2d').drawImage(cv, 0, 0, small.width, small.height);
+        const out = await new Promise(r => small.toBlob(r, 'image/jpeg', 0.85));
+        if (out) wallImg = doc.image(new Uint8Array(await out.arrayBuffer()), small.width, small.height);
+      }
+      tick('Pregătesc peretele…');
     }
 
     progress(0.82, 'Așez paginile…');
@@ -531,7 +612,8 @@ ${big || '  <p class="hint">Nicio poză în copie.</p>'}
     if (head.intro) y = doc.paragraph(head.intro, M + 60, y, CW - 120, { size: 12, color: '#5a6480', align: 'center' }) + 24;
     doc.line(doc.W / 2 - 60, y, doc.W / 2 + 60, y, { color: '#dbe6f2', width: 2 });
     y += 26;
-    doc.text(`${count(students.length, 'coleg', 'colegi')} · ${count(photos.length, 'amintire', 'amintiri')}`,
+    doc.text([count(students.length, 'coleg', 'colegi'), count(photos.length, 'amintire', 'amintiri'),
+      drawings.length ? count(drawings.length, 'desen pe perete', 'desene pe perete') : ''].filter(Boolean).join(' · '),
       doc.W / 2, y, { size: 14, font: 'F2', align: 'center' });
     y += 24;
     doc.text(`tipărit la ${longDate(at)}`, doc.W / 2, y, { size: 11, color: '#5a6480', align: 'center' });
@@ -624,6 +706,23 @@ ${big || '  <p class="hint">Nicio poză în copie.</p>'}
       }
     }
 
+    /* --- peretele cu desene: o pagină, peretele întreg --- */
+    if (wallImg) {
+      doc.addPage();
+      doc.bookmark('Peretele cu desene');
+      doc.text('Peretele cu desene', M, M, { size: 18, font: 'F2' });
+      doc.line(M, M + 26, doc.W - M, M + 26, { color: '#dbe6f2', width: 1.5 });
+      const artists = names(drawings);
+      const who = artists.length ? `Au desenat: ${artists.join(', ')}` : '';
+      const whoLines = who ? Pdf.wrap(who, 'F1', 10, CW).length : 0;
+      const top = M + 44, room = BOTTOM - top - (whoLines ? whoLines * 13 + 16 : 0);
+      const k = Math.min(CW / wallImg.w, room / wallImg.h);
+      const w = wallImg.w * k, h = wallImg.h * k, x = M + (CW - w) / 2;
+      doc.rect(x - 6, top - 6, w + 12, h + 12, { fill: '#ffffff', stroke: '#e6ecf4', width: 0.8 });
+      doc.drawImage(wallImg, x, top, w, h);
+      if (who) doc.paragraph(who, M, top + h + 16, CW, { size: 10, lead: 13, color: '#5a6480' });
+    }
+
     /* --- amintirile --- */
     if (photos.length) {
       // Room under the photo for a caption that runs to two lines and the
@@ -691,7 +790,7 @@ ${big || '  <p class="hint">Nicio poză în copie.</p>'}
     setBusy(true, 'Pregătesc…');
     try {
       const snap = await snapshot(progress);
-      if (!snap.students.length && !snap.photos.length) throw new Error('Albumul e gol — nu e nimic de descărcat încă.');
+      if (!snap.students.length && !snap.photos.length && !snap.drawings.length) throw new Error('Albumul e gol — nu e nimic de descărcat încă.');
       if (kind === 'zip') {
         progress(0.45, 'Construiesc paginile…');
         const { blob, missing } = await buildZip(snap, progress);

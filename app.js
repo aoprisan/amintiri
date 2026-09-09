@@ -383,6 +383,170 @@ $('#formPhotos').addEventListener('submit', async e => {
   }
 });
 
+/* ---------- the drawing wall ---------- */
+// One wall for the whole class. Every visit adds a transparent layer on top of
+// what is already there, so nobody can paint over a classmate by accident and
+// two phones drawing at once simply both land. The wall has a fixed size in
+// its own pixels; on screen it is scaled to fit, and strokes are recorded in
+// wall pixels, so a drawing made on a small phone is as crisp as any other.
+const WALL_W = 1200, WALL_H = 1500;
+let drawings = [], muralGen = 0;
+const mural = $('#mural'), muralCtx = mural.getContext('2d');
+
+// 1 desen, 3 desene, 20 de desene — and the "de" comes back every hundred.
+function countLabel(n, one, few) {
+  if (n === 1) return one;
+  const r = n % 100;
+  return n === 0 || (r >= 1 && r <= 19) ? few : 'de ' + few;
+}
+function loadImage(url) {
+  return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('desen ilizibil')); i.src = url; });
+}
+
+async function renderMural() {
+  const gen = ++muralGen;
+  let rows;
+  try { rows = await store.listDrawings(); }
+  catch (e) { $('#muralErr').textContent = 'Nu pot încărca peretele: ' + e.message; $('#muralErr').hidden = false; return; }
+  if (gen !== muralGen) return;
+  $('#muralErr').hidden = true;
+  revoke(drawings.map(d => d.url));
+  drawings = rows;
+  muralCtx.clearRect(0, 0, WALL_W, WALL_H);
+  for (const d of drawings) {
+    let img = null;
+    try { img = await loadImage(d.url); } catch { /* one lost layer must not empty the wall */ }
+    if (gen !== muralGen) return;
+    if (img) muralCtx.drawImage(img, 0, 0, WALL_W, WALL_H);
+  }
+  const names = [...new Set(drawings.map(d => d.from.trim()).filter(Boolean))];
+  $('#muralWho').textContent = names.length ? 'Au desenat: ' + names.join(', ') : '';
+  $('#muralEmpty').hidden = drawings.length > 0;
+  $('#muralCountWrap').hidden = drawings.length === 0;
+  $('#muralCount').textContent = drawings.length;
+  $('#muralCountLabel').textContent = countLabel(drawings.length, 'desen', 'desene');
+  mural.setAttribute('aria-label', drawings.length
+    ? `Peretele cu desene: ${drawings.length} ${countLabel(drawings.length, 'desen', 'desene')}, de la ${names.join(', ')}`
+    : 'Peretele cu desene, încă gol');
+}
+
+/* --- the easel --- */
+const inkCv = $('#drawInk'), inkCtx = inkCv.getContext('2d');
+const baseCv = $('#drawBase'), baseCtx = baseCv.getContext('2d');
+// Every stroke is kept, not just drawn, so "înapoi" can replay all but the last.
+let strokes = [], stroke = null, strokeId = null, erasing = false;
+
+function inkColor() {
+  const v = document.querySelector('input[name=ink]:checked').value;
+  return v === 'custom' ? $('#inkPick').value : v;
+}
+function inkWidth() { return +document.querySelector('input[name=size]:checked').value; }
+
+// Fit the wall inside whatever the board has, keeping its shape: portrait like
+// a phone, so the drawing area is not a letterbox.
+function fitBoard() {
+  const b = $('#board').getBoundingClientRect();
+  const k = Math.min((b.width - 12) / WALL_W, (b.height - 12) / WALL_H);
+  if (!(k > 0)) return;
+  $('#paper').style.width = Math.floor(WALL_W * k) + 'px';
+  $('#paper').style.height = Math.floor(WALL_H * k) + 'px';
+}
+function inkPoint(e) {
+  const r = inkCv.getBoundingClientRect();
+  return [(e.clientX - r.left) * WALL_W / r.width, (e.clientY - r.top) * WALL_H / r.height];
+}
+function setPen(s) {
+  // The eraser only takes ink off this child's own layer; the wall underneath
+  // shows through, untouched.
+  inkCtx.globalCompositeOperation = s.erase ? 'destination-out' : 'source-over';
+  inkCtx.strokeStyle = inkCtx.fillStyle = s.color;
+  inkCtx.lineWidth = s.width; inkCtx.lineCap = inkCtx.lineJoin = 'round';
+}
+function dot(p, w) { inkCtx.beginPath(); inkCtx.arc(p[0], p[1], w / 2, 0, Math.PI * 2); inkCtx.fill(); }
+function segment(a, b) { inkCtx.beginPath(); inkCtx.moveTo(a[0], a[1]); inkCtx.lineTo(b[0], b[1]); inkCtx.stroke(); }
+function replay() {
+  inkCtx.globalCompositeOperation = 'source-over';
+  inkCtx.clearRect(0, 0, WALL_W, WALL_H);
+  for (const s of strokes) {
+    setPen(s); dot(s.pts[0], s.width);
+    for (let i = 1; i < s.pts.length; i++) segment(s.pts[i - 1], s.pts[i]);
+  }
+}
+function drawState() { $('#btnUndo').disabled = $('#btnDrawClear').disabled = !strokes.length; }
+function setEraser(on) { erasing = on; $('#btnEraser').setAttribute('aria-pressed', String(on)); }
+
+inkCv.addEventListener('pointerdown', e => {
+  // A second finger resting on the glass must not start a second line.
+  if (stroke || !e.isPrimary) return;
+  e.preventDefault();
+  inkCv.setPointerCapture(e.pointerId);
+  strokeId = e.pointerId;
+  stroke = { color: inkColor(), width: inkWidth() * (erasing ? 2 : 1), erase: erasing, pts: [inkPoint(e)] };
+  setPen(stroke); dot(stroke.pts[0], stroke.width); // a tap leaves a dot
+});
+inkCv.addEventListener('pointermove', e => {
+  if (!stroke || e.pointerId !== strokeId) return;
+  e.preventDefault();
+  for (const ev of (e.getCoalescedEvents?.() || [e])) {
+    const p = inkPoint(ev);
+    segment(stroke.pts[stroke.pts.length - 1], p);
+    stroke.pts.push(p);
+  }
+});
+for (const ev of ['pointerup', 'pointercancel']) inkCv.addEventListener(ev, e => {
+  if (!stroke || e.pointerId !== strokeId) return;
+  strokes.push(stroke); stroke = null; strokeId = null;
+  drawState();
+});
+
+$('#inkPick').addEventListener('input', e => {
+  $('#customSw').style.setProperty('--c', e.target.value);
+  document.querySelector('input[name=ink][value=custom]').checked = true;
+});
+$('#inkPick').addEventListener('click', () => { document.querySelector('input[name=ink][value=custom]').checked = true; });
+$('#btnEraser').addEventListener('click', () => setEraser(!erasing));
+$('#btnUndo').addEventListener('click', () => { strokes.pop(); replay(); drawState(); });
+$('#btnDrawClear').addEventListener('click', () => { strokes = []; replay(); drawState(); });
+window.addEventListener('resize', () => { if ($('#dlgDraw').open) fitBoard(); });
+
+function openDraw() {
+  strokes = []; stroke = null; strokeId = null; setEraser(false);
+  inkCtx.globalCompositeOperation = 'source-over'; inkCtx.clearRect(0, 0, WALL_W, WALL_H);
+  // The wall as it is now sits under the new layer, so the child draws on the
+  // real thing and not on a blank sheet.
+  baseCtx.clearRect(0, 0, WALL_W, WALL_H); baseCtx.drawImage(mural, 0, 0);
+  $('#drawFrom').value = localStorage.getItem('myName') || '';
+  $('#drawErr').hidden = true;
+  $('#dlgDraw').showModal();
+  fitBoard(); drawState();
+}
+// A drawing not yet on the wall is worth one question before it is lost.
+function closeDraw() {
+  if (!strokes.length || confirm('Desenul nu e încă pe perete. Închizi oricum?')) $('#dlgDraw').close();
+}
+$('#btnDrawClose').addEventListener('click', closeDraw);
+$('#dlgDraw').addEventListener('cancel', e => { e.preventDefault(); closeDraw(); });
+$('#btnDraw').addEventListener('click', openDraw);
+mural.addEventListener('click', openDraw);
+
+$('#formDraw').addEventListener('submit', async e => {
+  e.preventDefault();
+  const from = $('#drawFrom').value.trim(); if (!from) return;
+  if (!strokes.some(s => !s.erase)) { $('#drawErr').textContent = 'Desenează ceva mai întâi.'; $('#drawErr').hidden = false; return; }
+  localStorage.setItem('myName', from);
+  navigator.storage?.persist?.().catch(() => {});
+  const btn = $('#btnSaveDraw'); btn.disabled = true; btn.textContent = 'Se lipește…';
+  try {
+    const drawing = await new Promise(r => inkCv.toBlob(r, 'image/png')); // transparent: only this child's ink
+    if (!drawing) throw new Error('desenul nu a putut fi salvat');
+    await store.addDrawing({ from, drawing });
+    strokes = [];
+    $('#dlgDraw').close(); toast('Desenul tău e pe perete!');
+    await renderMural();
+  } catch (err) { $('#drawErr').textContent = 'Nu s-a putut lipi pe perete: ' + err.message; $('#drawErr').hidden = false; }
+  finally { btn.disabled = false; btn.textContent = 'Lipește pe perete'; }
+});
+
 /* --- lightbox --- */
 function showLight() {
   const p = photos[lightIdx]; if (!p) return;
@@ -411,6 +575,7 @@ $('#dlgLight').addEventListener('close', () => { $('#lightImg').removeAttribute(
 
 /* ---------- boot ---------- */
 renderWall();
+renderMural();
 renderGallery();
 
 /* ---------- PWA: install, updates, offline ---------- */
@@ -501,6 +666,7 @@ if ('serviceWorker' in navigator) {
 const shortcut = new URLSearchParams(location.search).get('actiune');
 if (shortcut === 'poze') $('#btnAddPhotos').click();
 else if (shortcut === 'adauga') openAdd();
+else if (shortcut === 'deseneaza') openDraw();
 // Drop the parameter so a reload does not reopen the sheet.
 if (shortcut) history.replaceState(null, '', location.pathname);
 
