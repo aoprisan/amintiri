@@ -6,13 +6,14 @@ const API_BASE = (window.API_BASE || '').replace(/\/$/, '');
 /* ---------- Local store: IndexedDB, blobs kept as-is ---------- */
 class LocalStore {
   constructor() { this.dbp = new Promise((res, rej) => {
-    const r = indexedDB.open('absolvire', 2);
+    const r = indexedDB.open('absolvire', 3);
     r.onupgradeneeded = () => {
       const db = r.result;
-      // Guarded so an album created before the gallery existed upgrades in place.
+      // Guarded so an album created before the gallery or the wall existed upgrades in place.
       if (!db.objectStoreNames.contains('students')) db.createObjectStore('students', { keyPath: 'id' });
       if (!db.objectStoreNames.contains('impressions')) db.createObjectStore('impressions', { keyPath: 'id' }).createIndex('by_student', 'studentId');
       if (!db.objectStoreNames.contains('photos')) db.createObjectStore('photos', { keyPath: 'id' });
+      if (!db.objectStoreNames.contains('drawings')) db.createObjectStore('drawings', { keyPath: 'id' });
     };
     r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
   }); }
@@ -62,6 +63,20 @@ class LocalStore {
     await this._tx('photos', 'readwrite', st => st.put(p));
     return p.id;
   }
+  // The wall is its layers in the order they were added: each one is a
+  // transparent PNG the size of the wall, and drawing them oldest-first is
+  // exactly what the kids saw when they drew.
+  async listDrawings() {
+    const rows = await this._tx('drawings', 'readonly', st => st.getAll());
+    return rows.sort((a, b) => a.createdAt - b.createdAt).map(d => ({
+      id: d.id, from: d.from || '', createdAt: d.createdAt, url: URL.createObjectURL(d.drawing),
+    }));
+  }
+  async addDrawing({ from, drawing }) {
+    const d = { id: crypto.randomUUID(), from: from || '', drawing, createdAt: Date.now() };
+    await this._tx('drawings', 'readwrite', st => st.put(d));
+    return d.id;
+  }
 }
 
 /* ---------- Remote store: your backend ---------- */
@@ -105,6 +120,16 @@ class RemoteStore {
     fd.append('from', from || '');
     const p = await this._json(await fetch(`${this.base}/photos`, { method: 'POST', headers: this.headers(), body: fd }));
     return p.id;
+  }
+  async listDrawings() {
+    return this._json(await fetch(`${this.base}/drawings`, { headers: this.headers() }));
+  }
+  async addDrawing({ from, drawing }) {
+    const fd = new FormData();
+    fd.append('from', from || '');
+    fd.append('drawing', drawing, 'desen.png');
+    const d = await this._json(await fetch(`${this.base}/drawings`, { method: 'POST', headers: this.headers(), body: fd }));
+    return d.id;
   }
 }
 
