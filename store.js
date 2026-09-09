@@ -6,11 +6,13 @@ const API_BASE = (window.API_BASE || '').replace(/\/$/, '');
 /* ---------- Local store: IndexedDB, blobs kept as-is ---------- */
 class LocalStore {
   constructor() { this.dbp = new Promise((res, rej) => {
-    const r = indexedDB.open('absolvire', 1);
+    const r = indexedDB.open('absolvire', 2);
     r.onupgradeneeded = () => {
       const db = r.result;
-      db.createObjectStore('students', { keyPath: 'id' });
-      db.createObjectStore('impressions', { keyPath: 'id' }).createIndex('by_student', 'studentId');
+      // Guarded so an album created before the gallery existed upgrades in place.
+      if (!db.objectStoreNames.contains('students')) db.createObjectStore('students', { keyPath: 'id' });
+      if (!db.objectStoreNames.contains('impressions')) db.createObjectStore('impressions', { keyPath: 'id' }).createIndex('by_student', 'studentId');
+      if (!db.objectStoreNames.contains('photos')) db.createObjectStore('photos', { keyPath: 'id' });
     };
     r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
   }); }
@@ -46,6 +48,19 @@ class LocalStore {
     await this._tx('impressions', 'readwrite', st => st.put(n));
     return n;
   }
+  async listPhotos() {
+    const rows = await this._tx('photos', 'readonly', st => st.getAll());
+    return rows.sort((a, b) => b.createdAt - a.createdAt).map(p => ({
+      id: p.id, caption: p.caption || '', from: p.from || '', createdAt: p.createdAt,
+      url: URL.createObjectURL(p.photo),
+      thumbUrl: p.thumb ? URL.createObjectURL(p.thumb) : null,
+    }));
+  }
+  async addPhoto({ photo, thumb, caption, from }) {
+    const p = { id: crypto.randomUUID(), photo, thumb, caption: caption || '', from: from || '', createdAt: Date.now() };
+    await this._tx('photos', 'readwrite', st => st.put(p));
+    return p.id;
+  }
 }
 
 /* ---------- Remote store: your backend ---------- */
@@ -76,6 +91,18 @@ class RemoteStore {
     return this._json(await fetch(`${this.base}/students/${studentId}/impressions`, {
       method: 'POST', headers: this.headers({ 'Content-Type': 'application/json' }), body: JSON.stringify(body),
     }));
+  }
+  async listPhotos() {
+    return this._json(await fetch(`${this.base}/photos`, { headers: this.headers() }));
+  }
+  async addPhoto({ photo, thumb, caption, from }) {
+    const fd = new FormData();
+    fd.append('photo', photo, 'photo.jpg');
+    if (thumb) fd.append('thumb', thumb, 'thumb.jpg');
+    fd.append('caption', caption || '');
+    fd.append('from', from || '');
+    const p = await this._json(await fetch(`${this.base}/photos`, { method: 'POST', headers: this.headers(), body: fd }));
+    return p.id;
   }
 }
 
