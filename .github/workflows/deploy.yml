@@ -1,0 +1,49 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time; let a newer push finish rather than cancelling it.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assemble site
+        run: |
+          mkdir -p _site
+          cp index.html app.js store.js config.js sw.js manifest.webmanifest icon.svg _site/
+          touch _site/.nojekyll
+
+      # The service worker serves the app shell from cache; without a fresh
+      # cache name a deploy would not reach anyone who already installed it.
+      - name: Stamp service worker cache version
+        run: |
+          sed -i "s/^const CACHE = .*/const CACHE = 'absolvire-${GITHUB_SHA::7}';/" _site/sw.js
+          head -n 1 _site/sw.js
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

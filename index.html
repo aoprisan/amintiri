@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<title>Album de absolvire — Clasa a IV-a</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="icon" href="icon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Patrick+Hand&family=Nunito:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#ffffff; --rule:#dbe6f2; --ink:#1c2541; --ink-soft:#5a6480;
+  --yellow:#f7c948; --blue:#3e7cb1; --red:#e4572e; --green:#6aae6e; --pink:#e982b8;
+  --tape:rgba(247,201,72,.75);
+  --display:'Patrick Hand','Comic Sans MS',cursive;
+  --body:'Nunito',system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  font-family:var(--body); color:var(--ink); background:var(--paper);
+  background-image:linear-gradient(var(--rule) 1px,transparent 1px);
+  background-size:100% 32px; line-height:1.5; min-height:100vh;
+  padding-bottom:env(safe-area-inset-bottom);
+}
+a{color:var(--blue)}
+button{font:inherit;cursor:pointer}
+:focus-visible{outline:3px solid var(--blue);outline-offset:3px}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* ---- header ---- */
+header{padding:28px 20px 8px; max-width:960px; margin:0 auto; position:relative}
+header h1{
+  font-family:var(--display); font-size:clamp(2.4rem,9vw,4.5rem); line-height:.95; margin:0;
+  letter-spacing:.01em;
+}
+header h1 mark{
+  background:none; color:inherit; position:relative; z-index:1;
+}
+header h1 mark::before{
+  content:""; position:absolute; left:-4px; right:-4px; bottom:6%; height:38%;
+  background:var(--yellow); z-index:-1; transform:rotate(-1.2deg); border-radius:4px 40px 6px 30px/30px 6px 40px 4px;
+}
+header p{margin:10px 0 0; color:var(--ink-soft); max-width:36ch; font-size:1.05rem}
+.count{font-family:var(--display); font-size:1.4rem; margin-top:18px}
+.count b{display:inline-block; background:var(--ink); color:#fff; padding:0 12px; border-radius:50% 45% 55% 40%/50% 60% 40% 50%; font-weight:400}
+
+main{max-width:960px; margin:0 auto; padding:16px 20px 120px}
+
+/* ---- polaroid wall ---- */
+.wall{display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:26px 20px; padding:12px 0 0}
+.card{
+  position:relative; background:#fff; padding:10px 10px 14px; border:0; text-align:left; color:inherit;
+  box-shadow:0 2px 3px rgba(28,37,65,.08),0 10px 24px -8px rgba(28,37,65,.25);
+  transform:rotate(var(--tilt,0deg)); transition:transform .15s;
+}
+.card:hover,.card:focus-visible{transform:rotate(0deg) scale(1.03); z-index:2}
+.card::before{ /* tape */
+  content:""; position:absolute; top:-10px; left:50%; width:64px; height:22px; margin-left:-32px;
+  background:var(--tape); transform:rotate(var(--tape-tilt,-3deg)); box-shadow:0 1px 1px rgba(0,0,0,.08);
+}
+.card img,.card .noimg{display:block; width:100%; aspect-ratio:1; object-fit:cover; background:#eef3f9}
+.card .noimg{display:grid; place-items:center; font-family:var(--display); font-size:3rem; color:var(--blue)}
+.card figcaption{font-family:var(--display); font-size:1.35rem; margin-top:8px; line-height:1.1}
+.card small{display:block; font-family:var(--body); font-size:.8rem; color:var(--ink-soft); font-weight:700}
+.card.add{background:transparent; box-shadow:none; border:3px dashed var(--blue); display:grid; place-items:center; min-height:200px; color:var(--blue); font-family:var(--display); font-size:1.5rem; text-align:center; padding:16px}
+.card.add::before{display:none}
+
+.empty{color:var(--ink-soft); font-size:1.1rem; margin:24px 0}
+
+/* ---- sheet / dialog ---- */
+dialog{
+  border:0; padding:0; background:transparent; max-width:min(560px,100vw); width:100%; margin:auto;
+  max-height:100vh;
+}
+dialog::backdrop{background:rgba(28,37,65,.55)}
+.sheet{
+  background:#fff; margin:12px; padding:22px 20px 26px; box-shadow:0 18px 50px -10px rgba(0,0,0,.4);
+  position:relative; max-height:calc(100vh - 24px); overflow:auto;
+}
+.sheet::before{content:""; position:absolute; top:-8px; left:24px; width:80px; height:24px; background:var(--tape); transform:rotate(-4deg)}
+.sheet h2{font-family:var(--display); font-size:2rem; margin:0 0 6px; line-height:1}
+.close{position:absolute; top:10px; right:10px; width:40px; height:40px; border:0; background:#eef3f9; border-radius:50%; font-size:1.3rem}
+.field{margin:16px 0}
+label{display:block; font-weight:800; margin-bottom:6px}
+input[type=text],textarea{
+  width:100%; font:inherit; font-size:1.05rem; padding:10px 12px; border:2px solid var(--ink); border-radius:6px; background:#fff; color:var(--ink);
+}
+textarea{min-height:90px; resize:vertical}
+.hint{color:var(--ink-soft); font-size:.9rem; margin-top:4px}
+
+.btn{
+  display:inline-flex; align-items:center; gap:8px; border:2px solid var(--ink); background:#fff; color:var(--ink);
+  padding:10px 16px; border-radius:8px; font-weight:800; font-size:1rem; box-shadow:3px 3px 0 var(--ink);
+  transition:transform .08s, box-shadow .08s;
+}
+.btn:active{transform:translate(2px,2px); box-shadow:1px 1px 0 var(--ink)}
+.btn.primary{background:var(--yellow)}
+.btn.rec{background:var(--red); color:#fff}
+.btn.rec[aria-pressed=true]{animation:pulse 1s infinite}
+.btn:disabled{opacity:.45; box-shadow:none; cursor:default}
+@keyframes pulse{50%{transform:scale(.97)}}
+.row{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
+
+/* capture */
+.frame{position:relative; width:100%; aspect-ratio:1; background:#eef3f9; overflow:hidden; border:2px solid var(--ink)}
+.frame video,.frame img,.frame canvas{width:100%; height:100%; object-fit:cover; display:block}
+.frame video{transform:scaleX(-1)}
+.frame .placeholder{position:absolute; inset:0; display:grid; place-items:center; color:var(--ink-soft); text-align:center; padding:20px}
+.wave{height:56px; width:100%; display:block; background:#fff; border:2px solid var(--ink); border-radius:6px}
+.timer{font-family:var(--display); font-size:1.6rem; min-width:3ch}
+
+/* detail */
+.profile{display:grid; grid-template-columns:140px 1fr; gap:16px; align-items:start}
+.profile img,.profile .noimg{width:140px; height:140px; object-fit:cover; display:block; background:#eef3f9; border:2px solid var(--ink); transform:rotate(-2deg)}
+.profile .noimg{display:grid; place-items:center; font-family:var(--display); font-size:4rem; color:var(--blue)}
+.profile h2{font-size:2.2rem}
+.profile audio{width:100%; margin-top:10px}
+@media(max-width:420px){.profile{grid-template-columns:1fr}.profile img,.profile .noimg{width:120px;height:120px}}
+
+h3{font-family:var(--display); font-size:1.6rem; margin:26px 0 8px}
+.notes{list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:12px}
+.note{
+  padding:12px 14px 10px; border-radius:2px; position:relative; font-size:1.05rem; line-height:1.4;
+  transform:rotate(var(--tilt,0deg)); box-shadow:0 4px 10px -4px rgba(28,37,65,.35);
+}
+.note[data-color=yellow]{background:#fff2b3}.note[data-color=blue]{background:#d6e8f7}
+.note[data-color=pink]{background:#fbdbec}.note[data-color=green]{background:#dcf1dd}
+.note cite{display:block; font-style:normal; font-family:var(--display); font-size:1.15rem; margin-top:6px; text-align:right}
+.note cite::before{content:"— "}
+.swatches{display:flex; gap:10px}
+.swatches input{position:absolute; opacity:0; width:0; height:0}
+.swatches span{display:block; width:34px; height:34px; border-radius:50%; border:3px solid transparent; cursor:pointer}
+.swatches input:checked+span{border-color:var(--ink)}
+.swatches input:focus-visible+span{outline:3px solid var(--blue); outline-offset:2px}
+.sw-yellow{background:#fff2b3}.sw-blue{background:#d6e8f7}.sw-pink{background:#fbdbec}.sw-green{background:#dcf1dd}
+
+.toast{position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:var(--ink); color:#fff; padding:10px 18px; border-radius:8px; font-weight:700; opacity:0; pointer-events:none; transition:opacity .2s}
+.toast.show{opacity:1}
+.err{color:var(--red); font-weight:700}
+</style>
+</head>
+<body>
+<header>
+  <h1>Clasa a IV-a<br><mark>Promoția 2026</mark></h1>
+  <p>Albumul nostru de absolvire: poză, vocea ta și câteva vorbe de la colegi.</p>
+  <div class="count" id="count" hidden>Suntem <b id="countN">0</b> în album</div>
+</header>
+
+<main>
+  <div id="wall" class="wall" aria-live="polite"></div>
+  <p id="empty" class="empty" hidden>Albumul e gol. Fii primul care se adaugă!</p>
+</main>
+
+<!-- ADD SELF -->
+<dialog id="dlgAdd">
+  <div class="sheet">
+    <button class="close" data-close aria-label="Închide">✕</button>
+    <h2>Adaugă-te în album</h2>
+    <form id="formAdd">
+      <div class="field">
+        <label for="name">Cum te cheamă?</label>
+        <input id="name" type="text" maxlength="40" required autocomplete="off" placeholder="Prenumele tău">
+      </div>
+
+      <div class="field">
+        <label>Poza ta</label>
+        <div class="frame" id="frame">
+          <video id="video" autoplay playsinline muted hidden></video>
+          <img id="photoPreview" alt="" hidden>
+          <div class="placeholder" id="photoPh">Pornește camera sau alege o poză</div>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button type="button" class="btn" id="btnCam">Pornește camera</button>
+          <button type="button" class="btn primary" id="btnSnap" hidden>Fă poza</button>
+          <button type="button" class="btn" id="btnRetake" hidden>Altă poză</button>
+          <label class="btn" for="fileIn" style="margin:0">Alege din telefon</label>
+          <input id="fileIn" type="file" accept="image/*" capture="user" hidden>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Vocea ta</label>
+        <p class="hint" style="margin:0 0 8px">Spune ceva pentru colegii tăi: un gând, o amintire, un salut. Ai până la 20 de secunde.</p>
+        <canvas class="wave" id="wave" width="600" height="56" aria-hidden="true"></canvas>
+        <div class="row" style="margin-top:10px">
+          <button type="button" class="btn rec" id="btnRec" aria-pressed="false">Înregistrează</button>
+          <span class="timer" id="timer">0:00</span>
+          <audio id="audioPreview" controls hidden></audio>
+        </div>
+      </div>
+
+      <p id="addErr" class="err" hidden></p>
+      <div class="row" style="margin-top:18px">
+        <button type="submit" class="btn primary" id="btnSave">Salvează în album</button>
+        <button type="button" class="btn" data-close>Renunță</button>
+      </div>
+    </form>
+  </div>
+</dialog>
+
+<!-- DETAIL -->
+<dialog id="dlgView">
+  <div class="sheet">
+    <button class="close" data-close aria-label="Închide">✕</button>
+    <div class="profile">
+      <div id="viewPhoto"></div>
+      <div>
+        <h2 id="viewName"></h2>
+        <audio id="viewAudio" controls preload="none"></audio>
+        <p id="viewNoAudio" class="hint" hidden>Nu are încă o înregistrare.</p>
+      </div>
+    </div>
+
+    <h3>Impresii de la colegi</h3>
+    <ul class="notes" id="notes"></ul>
+    <p id="notesEmpty" class="hint" hidden>Nimeni n-a scris încă. Fii tu primul!</p>
+
+    <h3>Lasă o impresie</h3>
+    <form id="formNote">
+      <div class="field">
+        <label for="noteFrom">Numele tău</label>
+        <input id="noteFrom" type="text" maxlength="40" required autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="noteText">Ce vrei să-i spui?</label>
+        <textarea id="noteText" maxlength="300" required placeholder="O amintire, un compliment, ce îți place la el/ea..."></textarea>
+      </div>
+      <div class="field">
+        <label>Culoarea bilețelului</label>
+        <div class="swatches">
+          <label><input type="radio" name="color" value="yellow" checked><span class="sw-yellow"></span></label>
+          <label><input type="radio" name="color" value="blue"><span class="sw-blue"></span></label>
+          <label><input type="radio" name="color" value="pink"><span class="sw-pink"></span></label>
+          <label><input type="radio" name="color" value="green"><span class="sw-green"></span></label>
+        </div>
+      </div>
+      <p id="noteErr" class="err" hidden></p>
+      <button type="submit" class="btn primary">Lipește bilețelul</button>
+    </form>
+  </div>
+</dialog>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script src="config.js"></script>
+<script src="store.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

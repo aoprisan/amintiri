@@ -1,0 +1,86 @@
+/* Data layer. Set API_BASE (in config.js or window.API_BASE) to use your backend;
+ * leave empty to keep everything in this browser (IndexedDB). See README for the API contract. */
+
+const API_BASE = (window.API_BASE || '').replace(/\/$/, '');
+
+/* ---------- Local store: IndexedDB, blobs kept as-is ---------- */
+class LocalStore {
+  constructor() { this.dbp = new Promise((res, rej) => {
+    const r = indexedDB.open('absolvire', 1);
+    r.onupgradeneeded = () => {
+      const db = r.result;
+      db.createObjectStore('students', { keyPath: 'id' });
+      db.createObjectStore('impressions', { keyPath: 'id' }).createIndex('by_student', 'studentId');
+    };
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  }); }
+  async _tx(name, mode, fn) {
+    const db = await this.dbp;
+    return new Promise((res, rej) => {
+      const tx = db.transaction(name, mode); const st = tx.objectStore(name);
+      const out = fn(st); tx.oncomplete = () => res(out.result ?? out); tx.onerror = () => rej(tx.error);
+    });
+  }
+  async listStudents() {
+    const rows = await this._tx('students', 'readonly', st => st.getAll());
+    return rows.sort((a, b) => a.createdAt - b.createdAt).map(s => ({
+      id: s.id, name: s.name, createdAt: s.createdAt,
+      photoUrl: s.photo ? URL.createObjectURL(s.photo) : null,
+      audioUrl: s.audio ? URL.createObjectURL(s.audio) : null,
+    }));
+  }
+  async createStudent({ name, photo, audio }) {
+    const s = { id: crypto.randomUUID(), name, photo, audio, createdAt: Date.now() };
+    await this._tx('students', 'readwrite', st => st.put(s));
+    return s.id;
+  }
+  async listImpressions(studentId) {
+    const db = await this.dbp;
+    return new Promise((res, rej) => {
+      const req = db.transaction('impressions').objectStore('impressions').index('by_student').getAll(studentId);
+      req.onsuccess = () => res(req.result.sort((a, b) => a.createdAt - b.createdAt)); req.onerror = () => rej(req.error);
+    });
+  }
+  async addImpression(studentId, { from, text, color }) {
+    const n = { id: crypto.randomUUID(), studentId, from, text, color, createdAt: Date.now() };
+    await this._tx('impressions', 'readwrite', st => st.put(n));
+    return n;
+  }
+}
+
+/* ---------- Remote store: your backend ---------- */
+class RemoteStore {
+  constructor(base) { this.base = base; }
+  get code() { return localStorage.getItem('classCode') || ''; }
+  headers(extra = {}) { return { 'X-Class-Code': this.code, ...extra }; }
+  async _json(res) {
+    if (res.status === 401 || res.status === 403) { localStorage.removeItem('classCode'); throw new Error('Codul clasei nu e bun. Reîncarcă pagina și introdu-l din nou.'); }
+    if (!res.ok) throw new Error(`Serverul a răspuns ${res.status}`);
+    return res.json();
+  }
+  async listStudents() {
+    return this._json(await fetch(`${this.base}/students`, { headers: this.headers() }));
+  }
+  async createStudent({ name, photo, audio }) {
+    const fd = new FormData();
+    fd.append('name', name);
+    if (photo) fd.append('photo', photo, 'photo.jpg');
+    if (audio) fd.append('audio', audio, 'voice.' + (audio.type.includes('mp4') ? 'm4a' : 'webm'));
+    const s = await this._json(await fetch(`${this.base}/students`, { method: 'POST', headers: this.headers(), body: fd }));
+    return s.id;
+  }
+  async listImpressions(studentId) {
+    return this._json(await fetch(`${this.base}/students/${studentId}/impressions`, { headers: this.headers() }));
+  }
+  async addImpression(studentId, body) {
+    return this._json(await fetch(`${this.base}/students/${studentId}/impressions`, {
+      method: 'POST', headers: this.headers({ 'Content-Type': 'application/json' }), body: JSON.stringify(body),
+    }));
+  }
+}
+
+window.store = API_BASE ? new RemoteStore(API_BASE) : new LocalStore();
+if (API_BASE && !localStorage.getItem('classCode')) {
+  const c = prompt('Codul clasei (l-ai primit de la doamna/domnul învățător):');
+  if (c) localStorage.setItem('classCode', c.trim());
+}

@@ -1,0 +1,11 @@
+{
+  "name": "Album de absolvire — Clasa a IV-a",
+  "short_name": "Album IV",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "lang": "ro",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
