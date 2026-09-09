@@ -21,18 +21,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Copy everything but the repo's own scaffolding, so a new asset (an icon,
+      # a page) ships without anyone remembering to edit this list.
       - name: Assemble site
         run: |
           mkdir -p _site
-          cp index.html app.js store.js config.js sw.js manifest.webmanifest icon.svg _site/
+          tar -cf - \
+            --exclude=./.git --exclude=./.github --exclude=./_site \
+            --exclude=./tools --exclude=./README.md . | tar -xf - -C _site
           touch _site/.nojekyll
+          ls -la _site
 
       # The service worker serves the app shell from cache; without a fresh
       # cache name a deploy would not reach anyone who already installed it.
       - name: Stamp service worker cache version
         run: |
           sed -i "s/^const CACHE = .*/const CACHE = 'absolvire-${GITHUB_SHA::7}';/" _site/sw.js
-          head -n 1 _site/sw.js
+          grep -n "^const CACHE = " _site/sw.js
 
       - uses: actions/upload-pages-artifact@v3
         with:

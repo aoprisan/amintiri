@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Maskable icon: Android crops this to a circle/squircle/rounded square, so the
+       artwork is scaled down to sit inside the safe zone (the middle 80%) and the
+       background bleeds to the edges to fill whatever mask the launcher applies. -->
+  <rect width="512" height="512" fill="#3e7cb1"/>
+  <g transform="translate(256 256) scale(.72) translate(-255 -270)">
+    <rect x="96" y="120" width="320" height="330" fill="#fff" stroke="#1c2541" stroke-width="14" transform="rotate(-4 256 285)"/>
+    <rect x="126" y="150" width="260" height="220" fill="#eaf2fa" transform="rotate(-4 256 285)"/>
+    <rect x="200" y="92" width="112" height="40" fill="#f7c948" transform="rotate(6 256 112)"/>
+    <circle cx="256" cy="260" r="60" fill="#f7c948"/>
+    <circle cx="236" cy="250" r="8" fill="#1c2541"/>
+    <circle cx="276" cy="250" r="8" fill="#1c2541"/>
+    <path d="M228 280q28 28 56 0" stroke="#1c2541" stroke-width="10" fill="none" stroke-linecap="round"/>
+  </g>
+</svg>

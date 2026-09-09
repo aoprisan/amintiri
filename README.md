@@ -1,6 +1,8 @@
 # Album de absolvire — Clasa a IV-a
 
 Static PWA (vanilla JS, no build step), deployed to GitHub Pages by GitHub Actions.
+Installs to the home screen and works offline; see [Installing and working
+offline](#installing-and-working-offline).
 
 ## Deploy (GitHub Pages)
 
@@ -16,7 +18,43 @@ The workflow rewrites `CACHE` in `sw.js` to the commit SHA before publishing, so
 - `index.html`, `app.js` — UI: polaroid wall, add-yourself flow (camera + 20 s voice note + signature), per-student page with sticky-note impressions, and the shared photo gallery (*Amintiri*) with its full-screen viewer.
 - `store.js` — data layer. `LocalStore` (IndexedDB, default) or `RemoteStore` (your backend).
 - `config.js` — set `window.API_BASE` to switch to the backend. Empty string = local only.
-- `sw.js`, `manifest.webmanifest`, `icon.svg` — installable/offline app shell. `CACHE` is stamped at deploy time by CI.
+- `sw.js`, `manifest.webmanifest`, `icon*.svg`, `icon*.png` — installable/offline app shell. `CACHE` is stamped at deploy time by CI.
+- `tools/make-icons.py` — regenerates the PNG icons from the two SVGs. Not deployed.
+
+## Installing and working offline
+
+The album installs to the home screen and runs without a network.
+
+**Install.** A button in the header offers it as soon as the browser does
+(`beforeinstallprompt`, which we intercept so the browser's own infobar stays out of
+the way). Safari never fires that event, so on an iPhone the button is shown anyway
+and explains the two taps by hand — which is where most of these families are. The
+button disappears once the app is installed.
+
+**Icons.** `icon.svg` is the artwork; `tools/make-icons.py` rasterises it into the
+PNGs the platforms actually require — Chrome wants 192 and 512 PNGs before it will
+offer an install, and iOS refuses an SVG touch icon outright. `icon-maskable.svg` is
+the same drawing scaled into the middle 80% on a full-bleed background, so an Android
+launcher can crop it to a circle or a squircle without slicing the polaroid. Rerun the
+script (`pip install cairosvg && python3 tools/make-icons.py`) whenever the artwork
+changes; the PNGs are committed.
+
+**Offline.** The service worker precaches the app shell at install, plus the Google
+Fonts stylesheet and font files in a cache of their own — without those the album
+loses its handwriting the moment it goes offline. The shell is served **cache-first,
+on purpose**: a deploy changes `index.html` and `app.js` together, so serving a fresh
+page against a cached script would break the app in ways neither file shows on its
+own. Every response therefore comes from a single cache generation. Nothing else is
+cached — the API in `API_BASE` and the photos it serves always go to the network, so
+nobody sees a stale classmate list and the cache cannot grow without a bound. The
+album's own data lives in IndexedDB, not here.
+
+**Updates.** CI stamps `CACHE` with the commit SHA, so every deploy is a new
+generation. The new worker installs its cache alongside the old one and then *waits*
+rather than taking over: a child halfway through a photo, a recording and a signature
+should not have the page swapped under them. The page shows a "versiune nouă" banner,
+and only when the reader accepts does the worker activate and the page reload — whole,
+never half-new. A page left open for days re-checks hourly.
 
 ## Backend contract (what `RemoteStore` expects)
 All requests carry `X-Class-Code: <code>`; the client prompts for it once and keeps it in `localStorage`. Return 401/403 to make the client forget it and re-prompt.

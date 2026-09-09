@@ -412,4 +412,95 @@ $('#dlgLight').addEventListener('close', () => { $('#lightImg').removeAttribute(
 /* ---------- boot ---------- */
 renderWall();
 renderGallery();
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+
+/* ---------- PWA: install, updates, offline ---------- */
+const isStandalone = () =>
+  matchMedia('(display-mode: standalone)').matches ||
+  matchMedia('(display-mode: minimal-ui)').matches ||
+  navigator.standalone === true;
+
+// iOS reports itself as a Mac when the iPad asks for a desktop site, hence the
+// touch-point check next to the plain user-agent one.
+const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+
+const btnInstall = $('#btnInstall');
+let installPrompt = null;
+
+addEventListener('beforeinstallprompt', e => {
+  // Keep the browser's own mini-infobar away; the header button does this job.
+  e.preventDefault();
+  installPrompt = e;
+  btnInstall.hidden = false;
+});
+
+// Safari never fires that event, so on an iPhone we offer the button anyway and
+// explain the two taps by hand — which is where most of these kids will be.
+if (isIos && !isStandalone()) btnInstall.hidden = false;
+
+btnInstall.addEventListener('click', async () => {
+  if (!installPrompt) {
+    // No prompt to show: either iOS, or the user already dismissed one (the
+    // event is single-use). Both cases end in the same short instructions.
+    $('#instrIos').hidden = !isIos;
+    $('#instrOther').hidden = isIos;
+    $('#dlgInstall').showModal();
+    return;
+  }
+  installPrompt.prompt();
+  const { outcome } = await installPrompt.userChoice;
+  installPrompt = null;
+  // Leave the button up after a dismissal so it can be tried again; the click
+  // above falls back to the instructions now that the prompt is spent.
+  if (outcome === 'accepted') btnInstall.hidden = true;
+});
+
+addEventListener('appinstalled', () => { installPrompt = null; btnInstall.hidden = true; });
+
+const offlinePill = $('#offlinePill');
+const showOnline = () => { offlinePill.hidden = navigator.onLine; };
+addEventListener('offline', showOnline);
+addEventListener('online', () => { showOnline(); toast('Ai revenit online.'); });
+showOnline();
+
+if ('serviceWorker' in navigator) {
+  // Set when the user accepts the update, so the reload below only fires for a
+  // swap they asked for — not for the first worker claiming the page.
+  let swapping = false;
+
+  navigator.serviceWorker.register('sw.js').then(reg => {
+    const offer = worker => {
+      // A worker waiting with nothing in control is just the first install.
+      if (!worker || !navigator.serviceWorker.controller) return;
+      $('#updateBar').hidden = false;
+      $('#btnUpdate').onclick = () => {
+        swapping = true;
+        $('#updateBar').hidden = true;
+        worker.postMessage('skip-waiting');
+      };
+    };
+    $('#btnUpdateLater').onclick = () => { $('#updateBar').hidden = true; };
+
+    offer(reg.waiting);
+    reg.addEventListener('updatefound', () => {
+      const w = reg.installing;
+      w?.addEventListener('statechange', () => { if (w.state === 'installed') offer(w); });
+    });
+    // An installed album can stay open for days; look for a deploy now and then.
+    setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000);
+  }).catch(() => {});
+
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!swapping) return;
+    swapping = false;
+    location.reload();
+  });
+}
+
+// Manifest shortcuts (long-press the installed icon) arrive as ?actiune=…
+const shortcut = new URLSearchParams(location.search).get('actiune');
+if (shortcut === 'poze') $('#btnAddPhotos').click();
+else if (shortcut === 'adauga') openAdd();
+// Drop the parameter so a reload does not reopen the sheet.
+if (shortcut) history.replaceState(null, '', location.pathname);
+
