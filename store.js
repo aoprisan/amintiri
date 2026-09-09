@@ -29,10 +29,11 @@ class LocalStore {
       id: s.id, name: s.name, createdAt: s.createdAt,
       photoUrl: s.photo ? URL.createObjectURL(s.photo) : null,
       audioUrl: s.audio ? URL.createObjectURL(s.audio) : null,
+      signatureUrl: s.signature ? URL.createObjectURL(s.signature) : null,
     }));
   }
-  async createStudent({ name, photo, audio }) {
-    const s = { id: crypto.randomUUID(), name, photo, audio, createdAt: Date.now() };
+  async createStudent({ name, photo, audio, signature }) {
+    const s = { id: crypto.randomUUID(), name, photo, audio, signature, createdAt: Date.now() };
     await this._tx('students', 'readwrite', st => st.put(s));
     return s.id;
   }
@@ -76,11 +77,12 @@ class RemoteStore {
   async listStudents() {
     return this._json(await fetch(`${this.base}/students`, { headers: this.headers() }));
   }
-  async createStudent({ name, photo, audio }) {
+  async createStudent({ name, photo, audio, signature }) {
     const fd = new FormData();
     fd.append('name', name);
     if (photo) fd.append('photo', photo, 'photo.jpg');
     if (audio) fd.append('audio', audio, 'voice.' + (audio.type.includes('mp4') ? 'm4a' : 'webm'));
+    if (signature) fd.append('signature', signature, 'signature.png');
     const s = await this._json(await fetch(`${this.base}/students`, { method: 'POST', headers: this.headers(), body: fd }));
     return s.id;
   }
