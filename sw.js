@@ -5,7 +5,12 @@ const CACHE = 'absolvire-v2';
 const FONTS = 'absolvire-fonts';
 
 // Without these the app cannot boot offline, so a failure here fails the install.
-const CORE = ['./', 'index.html', 'app.js', 'store.js', 'config.js', 'manifest.webmanifest'];
+const CORE = [
+  './', 'index.html', 'app.js', 'store.js', 'config.js', 'manifest.webmanifest',
+  // The download lives on the same shelf as the album itself: a family that
+  // opened it once should be able to take a copy home with no network.
+  'zip.js', 'pdf.js', 'export.js',
+];
 // Nice to have offline; a miss must not cost us the whole service worker.
 const EXTRA = [
   'icon.svg', 'icon-192.png', 'icon-512.png',
